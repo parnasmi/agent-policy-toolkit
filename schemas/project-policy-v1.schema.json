@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-policy-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "toolkitVersion", "bundles", "targets"],
+  "properties": {
+    "schemaVersion": { "enum": ["v1", "1"] },
+    "toolkitVersion": { "type": "string" },
+    "bundles": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)*$" }, "uniqueItems": true },
+    "targets": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }, "uniqueItems": true },
+    "overlays": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^v[1-9][0-9]*$": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}
