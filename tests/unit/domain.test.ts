@@ -36,6 +36,7 @@ const changePlan = {
   removals: [],
   diagnostics: [],
   createdAt: '2026-08-12T00:00:00.000Z',
+  planHash: 'plan-hash',
 } satisfies ChangePlan
 
 describe('normalized policy domain', () => {

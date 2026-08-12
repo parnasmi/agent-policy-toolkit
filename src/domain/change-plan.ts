@@ -12,4 +12,6 @@ export interface ChangePlan {
   readonly removals: readonly string[]
   readonly diagnostics: readonly Diagnostic[]
   readonly createdAt: string
+  /** SHA-256 of the canonical plan document with this field omitted. */
+  readonly planHash: string
 }
