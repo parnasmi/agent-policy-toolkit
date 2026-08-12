@@ -1,0 +1,29 @@
+{
+  "name": "@agent-policy/agent-policy-toolkit",
+  "version": "0.1.0-alpha.0",
+  "description": "Portable, layered policy compilation for AI coding-agent harnesses",
+  "type": "module",
+  "bin": { "agent-policy": "./dist/cli/bin.js" },
+  "files": ["dist", "catalog", "schemas", "README.md", "LICENSE"],
+  "engines": { "node": ">=22.20.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:contracts": "vitest run --project contracts",
+    "test:cli": "vitest run --project cli",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "pack:check": "pnpm pack --dry-run"
+  },
+  "dependencies": {
+    "ajv": "8.17.1",
+    "yaml": "2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.6"
+  },
+  "packageManager": "pnpm@11.3.0"
+}
