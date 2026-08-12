@@ -2,14 +2,20 @@ export const MANAGED_REGION_START = '<!-- agent-policy:start owner=@agent-policy
 export const MANAGED_REGION_END = '<!-- agent-policy:end -->'
 
 const markerPattern = /<!--\s*agent-policy:(?:start\b[^>]*|end\b[^>]*)-->/g
+const sentinelPattern = /agent-policy:(?:start|end)/g
 
 function invalid(reason: string): never {
   throw new Error(`Invalid agent-policy Managed Region: ${reason}`)
 }
 
 function validateMarkers(source: string): readonly [number, number] | undefined {
+  const sentinels = [...source.matchAll(sentinelPattern)]
+  if (sentinels.length === 0) return undefined
+
   const markers = [...source.matchAll(markerPattern)]
-  if (markers.length === 0) return undefined
+  if (markers.length !== sentinels.length) {
+    invalid('malformed or truncated marker-like content')
+  }
 
   for (const marker of markers) {
     if (marker[0] !== MANAGED_REGION_START && marker[0] !== MANAGED_REGION_END) {

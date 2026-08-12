@@ -154,6 +154,9 @@ describe('Codex adapter contract', () => {
     ['unmatched start', '<!-- agent-policy:start owner=@agent-policy/agent-policy-toolkit -->'],
     ['unmatched end', '<!-- agent-policy:end -->'],
     ['foreign owner', '<!-- agent-policy:start owner=@another/toolkit -->\n<!-- agent-policy:end -->'],
+    ['truncated start', '<!-- agent-policy:start owner=@agent-policy/agent-policy-toolkit'],
+    ['malformed end', '<!-- agent-policy:end --'],
+    ['startowner sentinel', '<!-- agent-policy:startowner=@agent-policy/agent-policy-toolkit -->'],
   ])('rejects %s Managed Region markers as drift', async (_case, agentsSource) => {
     await expect(codexAdapter.project(
       projectionInput(new Map([['AGENTS.md', agentsSource]])),
