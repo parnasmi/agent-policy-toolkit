@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -121,5 +121,49 @@ describe('canonical source schema validation', () => {
     )
 
     await expect(loadProjectPolicy(root)).rejects.toBeInstanceOf(PolicyError)
+  })
+
+  it('rejects a declared overlay symlink that resolves outside the project policy directory', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-policy-schema-'))
+    const policyDir = join(root, '.agent-policy')
+    const outsideOverlay = join(root, 'outside-overlay.yaml')
+    await mkdir(policyDir)
+    await writeFile(
+      join(policyDir, 'policy.yaml'),
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: [core]\ntargets: [codex]\noverlays: [overlay.yaml]\n',
+    )
+    await writeFile(outsideOverlay, 'ruleId: core.task-fidelity\noperation: disable\nreason: external\n')
+    await symlink(outsideOverlay, join(policyDir, 'overlay.yaml'))
+
+    await expect(loadProjectPolicy(root)).rejects.toBeInstanceOf(PolicyError)
+  })
+
+  it('loads valid optional project policy object fields', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-policy-schema-'))
+    const policyDir = join(root, '.agent-policy')
+    await mkdir(policyDir)
+    await writeFile(
+      join(policyDir, 'policy.yaml'),
+      [
+        'schemaVersion: v1',
+        'toolkitVersion: 0.1.0-alpha.0',
+        'bundles: [core]',
+        'targets: [codex]',
+        'profiles: { default: { concise: true } }',
+        'renderOptions: { lineWidth: 100 }',
+        'adapterOptions: { codex: { managedRegions: true } }',
+        'reviewDefaults: { requireDiff: true }',
+        'ciIntegration: { command: agent-policy check }',
+        '',
+      ].join('\n'),
+    )
+
+    await expect(loadProjectPolicy(root)).resolves.toMatchObject({
+      profiles: { default: { concise: true } },
+      renderOptions: { lineWidth: 100 },
+      adapterOptions: { codex: { managedRegions: true } },
+      reviewDefaults: { requireDiff: true },
+      ciIntegration: { command: 'agent-policy check' },
+    })
   })
 })

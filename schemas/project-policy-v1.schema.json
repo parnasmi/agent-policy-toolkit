@@ -10,6 +10,11 @@
     "bundles": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)*$" }, "uniqueItems": true },
     "targets": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }, "uniqueItems": true },
     "overlays": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "profiles": { "type": "object", "additionalProperties": true },
+    "renderOptions": { "type": "object", "additionalProperties": true },
+    "adapterOptions": { "type": "object", "additionalProperties": true },
+    "reviewDefaults": { "type": "object", "additionalProperties": true },
+    "ciIntegration": { "type": "object", "additionalProperties": true },
     "extensions": {
       "type": "object",
       "additionalProperties": false,

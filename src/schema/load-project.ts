@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, realpath } from 'node:fs/promises'
 import { isAbsolute, normalize, relative, resolve, sep } from 'node:path'
 
 import { PolicyError } from '../domain/diagnostics.js'
@@ -52,11 +52,29 @@ function resolveDeclaredFile(root: string, policyDirectory: string, declaredPath
   return resolved
 }
 
-async function readDeclaredFile(root: string, file: string): Promise<string> {
+function isWithin(parent: string, child: string): boolean {
+  const childPath = relative(parent, child)
+  return childPath !== '' && childPath !== '..' && !childPath.startsWith(`..${sep}`) && !isAbsolute(childPath)
+}
+
+async function readDeclaredFile(root: string, policyDirectory: string, file: string): Promise<string> {
   const sourcePath = sourcePathFor(root, file)
   try {
-    return await readFile(file, 'utf8')
+    const [canonicalRoot, canonicalPolicyDirectory, canonicalFile] = await Promise.all([
+      realpath(root),
+      realpath(policyDirectory),
+      realpath(file),
+    ])
+    if (
+      !isWithin(canonicalRoot, canonicalPolicyDirectory) ||
+      !isWithin(canonicalPolicyDirectory, canonicalFile)
+    ) {
+      throw policyError('PATH_ESCAPES_PROJECT', `Declared path resolves outside .agent-policy: ${sourcePath}`, sourcePath)
+    }
+
+    return await readFile(canonicalFile, 'utf8')
   } catch (error) {
+    if (error instanceof PolicyError) throw error
     const message = error instanceof Error ? error.message : 'Unable to read source file'
     throw policyError('MISSING_MANIFEST_REFERENCE', message, sourcePath)
   }
@@ -70,7 +88,7 @@ export async function loadProjectPolicy(root: string): Promise<ProjectPolicySour
   const manifestPath = sourcePathFor(repositoryRoot, manifestFile)
   const manifest = validateDocument<ProjectPolicyManifest>(
     'project-policy-v1',
-    parseYamlDocument(await readDeclaredFile(repositoryRoot, manifestFile), manifestPath),
+    parseYamlDocument(await readDeclaredFile(repositoryRoot, policyDirectory, manifestFile), manifestPath),
     manifestPath,
   )
   const overlayPaths = manifest.overlays ?? []
@@ -82,7 +100,7 @@ export async function loadProjectPolicy(root: string): Promise<ProjectPolicySour
     overlays.push({
       ...validateDocument<OverlayDirective>(
         'overlay-v1',
-        parseYamlDocument(await readDeclaredFile(repositoryRoot, overlayFile), overlayPath),
+        parseYamlDocument(await readDeclaredFile(repositoryRoot, policyDirectory, overlayFile), overlayPath),
         overlayPath,
       ),
       path: overlayPath,
