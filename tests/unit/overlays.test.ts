@@ -126,6 +126,22 @@ describe('overlay resolution', () => {
     ])
   })
 
+  it('reports a runtime-invalid omitted reason at the directive path', () => {
+    const result = applyOverlays(rules, [{
+      path: '.agent-policy/overlays/omitted-reason.yaml',
+      ruleId: 'example.configurable',
+      operation: 'disable',
+    } as never])
+
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'MISSING_OVERLAY_REASON',
+        path: '.agent-policy/overlays/omitted-reason.yaml',
+        ruleId: 'example.configurable',
+      }),
+    ])
+  })
+
   it.each(['disable', 'addendum', 'replace-with'] as const)(
     'rejects %s when the target policy excludes project overlays',
     (operation) => {

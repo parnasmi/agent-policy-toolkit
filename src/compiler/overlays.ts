@@ -86,7 +86,7 @@ export function applyOverlays(
       continue
     }
 
-    if (directive.reason.trim().length === 0) {
+    if (typeof directive.reason !== 'string' || directive.reason.trim().length === 0) {
       diagnostics.push(diagnostic(
         'MISSING_OVERLAY_REASON',
         `Overlay directive for ${target.id} requires a non-empty reason`,
