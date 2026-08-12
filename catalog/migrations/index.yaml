@@ -1,0 +1,3 @@
+schemaVersions:
+  - version: v1
+    migrators: []
