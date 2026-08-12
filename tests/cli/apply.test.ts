@@ -3,6 +3,7 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  open,
   readFile,
   readdir,
   symlink,
@@ -121,6 +122,44 @@ describe('transactional plan application', () => {
     await expectMissing(join(root, '.agents/skills/old/SKILL.md'))
     await expectNoTransactionDebris(root)
     await expectNoTransactionDebris(join(root, '.agents/skills/testing'))
+  })
+
+  it('preserves an original backup changed through an open descriptor before cleanup', async () => {
+    const { parent, root } = await sandbox()
+    const previous = generated('old\n')
+    const desired = generated('reviewed\n')
+    await writeFile(join(root, 'owned.md'), previous)
+    const reviewed = await plan(parent, root, [artifact('owned.md', desired)])
+    let originalHandle: Awaited<ReturnType<typeof open>> | undefined
+    const hooks: TransactionHooks = {
+      beforeRename: async ({ phase }) => {
+        if (phase === 'backup') {
+          originalHandle = await open(join(root, 'owned.md'), 'r+')
+        }
+        if (phase === 'install' && originalHandle !== undefined) {
+          await originalHandle.truncate(0)
+          await originalHandle.writeFile(generated('open descriptor edit\n'), 'utf8')
+          await originalHandle.sync()
+        }
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+    await originalHandle?.close()
+
+    expect(result).toMatchObject({ ok: true })
+    if (!result.ok) throw new Error('expected successful application with cleanup warning')
+    expect(result.warnings).toEqual([
+      expect.stringMatching(/BACKUP CLEANUP FAILED.*owned\.md.*preserved/i),
+    ])
+    expect(await readFile(join(root, 'owned.md'), 'utf8')).toBe(desired)
+    const backup = (await readdir(root)).find((name) => name.endsWith('.backup'))
+    if (backup === undefined) throw new Error('expected preserved backup')
+    expect(await readFile(join(root, backup), 'utf8')).toBe(generated('open descriptor edit\n'))
   })
 
   it('adds a reviewed owned region to an unchanged unmanaged entry file', async () => {
@@ -259,10 +298,14 @@ describe('transactional plan application', () => {
       artifact('a-owned.md', generated('reviewed\n')),
       artifact('b-new.md', generated('created\n')),
     ])
+    let installedHandle: Awaited<ReturnType<typeof open>> | undefined
     const hooks: TransactionHooks = {
       beforeRename: async ({ phase, operationIndex }) => {
         if (phase === 'install' && operationIndex === 1) {
-          await writeFile(join(root, 'a-owned.md'), generated('concurrent\n'))
+          installedHandle = await open(join(root, 'a-owned.md'), 'r+')
+          await installedHandle.truncate(0)
+          await installedHandle.writeFile(generated('concurrent\n'), 'utf8')
+          await installedHandle.sync()
           throw new Error('stop after concurrent edit')
         }
       },
@@ -273,6 +316,7 @@ describe('transactional plan application', () => {
       toolkitVersion,
       transactionHooks: hooks,
     })
+    await installedHandle?.close()
 
     expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
     if (result.ok) throw new Error('expected transaction failure')
@@ -479,6 +523,51 @@ describe('transactional plan application', () => {
 
     expect(result).toMatchObject({ ok: false, code: 'unsafe-target' })
     await expectMissing(join(outside, 'new.md'))
+  })
+
+  it('applies safely beneath a confined in-repository symlink ancestor', async () => {
+    const { parent, root } = await sandbox()
+    await mkdir(join(root, 'actual/sub'), { recursive: true })
+    await symlink(join(root, 'actual'), join(root, 'linked'))
+    const reviewed = await plan(parent, root, [
+      artifact('linked/sub/new.md', generated('new\n')),
+    ])
+
+    const result = await applyPlan(reviewed, { repositoryRoot: root, toolkitVersion })
+
+    expect(result).toMatchObject({ ok: true })
+    expect(await readFile(join(root, 'actual/sub/new.md'), 'utf8')).toBe(generated('new\n'))
+  })
+
+  it('rolls back safely beneath a confined in-repository symlink ancestor', async () => {
+    const { parent, root } = await sandbox()
+    await mkdir(join(root, 'actual/sub'), { recursive: true })
+    await symlink(join(root, 'actual'), join(root, 'linked'))
+    await writeFile(join(root, 'actual/sub/owned.md'), generated('old\n'))
+    const reviewed = await plan(parent, root, [
+      artifact('linked/sub/owned.md', generated('new\n')),
+      artifact('linked/sub/second.md', generated('second\n')),
+    ])
+    const hooks: TransactionHooks = {
+      beforeRename: ({ phase, operationIndex }) => {
+        if (phase === 'install' && operationIndex === 1) throw new Error('stop under symlink')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'transaction-failed',
+      rollbackFailures: [],
+    })
+    expect(await readFile(join(root, 'actual/sub/owned.md'), 'utf8')).toBe(generated('old\n'))
+    await expectMissing(join(root, 'actual/sub/second.md'))
+    await expectNoTransactionDebris(join(root, 'actual/sub'))
   })
 
   it('revalidates confinement immediately before preparing a sibling temporary', async () => {
