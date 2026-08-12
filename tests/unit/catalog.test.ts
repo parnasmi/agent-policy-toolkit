@@ -38,22 +38,84 @@ const expectedIds = [
   'typescript.reuse-source-types',
 ] as const
 
-const originalAliases = [
-  'RULE_TASK_FIDELITY', 'RULE_MINIMAL_CHANGE', 'RULE_NAME_STABILITY', 'RULE_STYLE_CONSISTENCY',
-  'RULE_INSPECT_BEFORE_CHANGE', 'RULE_ARCHITECTURE_CONSISTENCY', 'RULE_REUSE_EXISTING',
-  'RULE_ABSTRACTION_RESTRAINT', 'RULE_SIMPLICITY', 'RULE_TYPE_SAFETY', 'RULE_TYPE_REUSE',
-  'RULE_RUNTIME_VALIDATION', 'RULE_REACT_DATA_FLOW', 'RULE_DERIVED_STATE', 'RULE_EFFECT_DISCIPLINE',
-  'RULE_REACT_OPTIMIZATION', 'RULE_COMPONENT_RESPONSIBILITY', 'RULE_HOOK_SAFETY', 'RULE_EVENT_LOGIC',
-  'RULE_NEXT_BOUNDARIES', 'RULE_SERVER_SECRETS', 'RULE_NEXT_PRIMITIVES', 'RULE_URL_STATE',
-  'RULE_DATA_FETCHING', 'RULE_ASYNC_SAFETY', 'RULE_ERROR_HANDLING', 'RULE_ASYNC_UI',
-  'RULE_API_STABILITY', 'RULE_BOUNDARY_NORMALIZATION', 'RULE_ACCESSIBILITY', 'RULE_SECURITY_INPUT',
-  'RULE_AUTHORIZATION', 'RULE_DEPENDENCY_RESTRAINT', 'RULE_TEST_BEHAVIOR', 'RULE_TEST_CHANGES',
-  'RULE_SIDE_EFFECTS', 'RULE_COMMENTS', 'RULE_DEAD_CODE', 'RULE_VERIFICATION', 'RULE_DIFF_REVIEW',
-  'RULE_NO_GUESSING', 'RULE_ASSUMPTIONS', 'RULE_ROOT_CAUSE', 'RULE_NO_OPPORTUNISTIC_REFACTOR',
-] as const
+const expectedRuleAliases = {
+  'async-control-flow.explicit-failure-behavior': ['RULE_ERROR_HANDLING'],
+  'async-control-flow.overlap-safety': ['RULE_ASYNC_SAFETY'],
+  'async-control-flow.user-visible-states': ['RULE_ASYNC_UI'],
+  'core.architecture-consistency': ['RULE_ARCHITECTURE_CONSISTENCY'],
+  'core.inspect-before-change': ['RULE_INSPECT_BEFORE_CHANGE', 'RULE_NO_GUESSING', 'RULE_ASSUMPTIONS'],
+  'core.minimal-change': ['RULE_MINIMAL_CHANGE', 'RULE_NO_OPPORTUNISTIC_REFACTOR'],
+  'core.name-stability': ['RULE_NAME_STABILITY'],
+  'core.style-consistency': ['RULE_STYLE_CONSISTENCY'],
+  'core.task-fidelity': ['RULE_TASK_FIDELITY'],
+  'core.verify-before-completion': ['RULE_VERIFICATION', 'RULE_DIFF_REVIEW'],
+  'data-boundaries.normalize-external-data': ['RULE_BOUNDARY_NORMALIZATION'],
+  'data-boundaries.public-contract-stability': ['RULE_API_STABILITY'],
+  'data-boundaries.runtime-validation': ['RULE_RUNTIME_VALIDATION'],
+  'implementation-design.abstraction-restraint': ['RULE_ABSTRACTION_RESTRAINT'],
+  'implementation-design.dependency-restraint': ['RULE_DEPENDENCY_RESTRAINT'],
+  'implementation-design.localized-side-effects': ['RULE_SIDE_EFFECTS'],
+  'implementation-design.reuse-before-creation': ['RULE_REUSE_EXISTING'],
+  'implementation-design.simplicity': ['RULE_SIMPLICITY'],
+  'react.component-responsibility': ['RULE_COMPONENT_RESPONSIBILITY'],
+  'react.derived-state': ['RULE_DERIVED_STATE'],
+  'react.effect-discipline': ['RULE_EFFECT_DISCIPLINE'],
+  'react.event-logic': ['RULE_EVENT_LOGIC'],
+  'react.hook-safety': ['RULE_HOOK_SAFETY'],
+  'react.optimization-restraint': ['RULE_REACT_OPTIMIZATION'],
+  'react.unidirectional-data-flow': ['RULE_REACT_DATA_FLOW'],
+  'testing.behavior-over-implementation': ['RULE_TEST_BEHAVIOR'],
+  'testing.change-driven-coverage': ['RULE_TEST_CHANGES'],
+  'typescript.preserve-type-safety': ['RULE_TYPE_SAFETY'],
+  'typescript.reuse-source-types': ['RULE_TYPE_REUSE'],
+} as const
 
-const laterSliceNumbers = new Set([20, 21, 22, 23, 24, 30, 31, 32, 43])
-const retiredNumbers = new Set([37, 38])
+const expectedProvenance = [
+  { number: 1, alias: 'RULE_TASK_FIDELITY', destination: 'core.task-fidelity', disposition: 'active-slice-a' },
+  { number: 2, alias: 'RULE_MINIMAL_CHANGE', destination: 'core.minimal-change', disposition: 'active-slice-a' },
+  { number: 3, alias: 'RULE_NAME_STABILITY', destination: 'core.name-stability', disposition: 'active-slice-a' },
+  { number: 4, alias: 'RULE_STYLE_CONSISTENCY', destination: 'core.style-consistency', disposition: 'active-slice-a' },
+  { number: 5, alias: 'RULE_INSPECT_BEFORE_CHANGE', destination: 'core.inspect-before-change', disposition: 'active-slice-a' },
+  { number: 6, alias: 'RULE_ARCHITECTURE_CONSISTENCY', destination: 'core.architecture-consistency', disposition: 'active-slice-a' },
+  { number: 7, alias: 'RULE_REUSE_EXISTING', destination: 'implementation-design.reuse-before-creation', disposition: 'active-slice-a' },
+  { number: 8, alias: 'RULE_ABSTRACTION_RESTRAINT', destination: 'implementation-design.abstraction-restraint', disposition: 'active-slice-a' },
+  { number: 9, alias: 'RULE_SIMPLICITY', destination: 'implementation-design.simplicity', disposition: 'active-slice-a' },
+  { number: 10, alias: 'RULE_TYPE_SAFETY', destination: 'typescript.preserve-type-safety', disposition: 'active-slice-a' },
+  { number: 11, alias: 'RULE_TYPE_REUSE', destination: 'typescript.reuse-source-types', disposition: 'active-slice-a' },
+  { number: 12, alias: 'RULE_RUNTIME_VALIDATION', destination: 'data-boundaries.runtime-validation', disposition: 'active-slice-a' },
+  { number: 13, alias: 'RULE_REACT_DATA_FLOW', destination: 'react.unidirectional-data-flow', disposition: 'active-slice-a' },
+  { number: 14, alias: 'RULE_DERIVED_STATE', destination: 'react.derived-state', disposition: 'active-slice-a' },
+  { number: 15, alias: 'RULE_EFFECT_DISCIPLINE', destination: 'react.effect-discipline', disposition: 'active-slice-a' },
+  { number: 16, alias: 'RULE_REACT_OPTIMIZATION', destination: 'react.optimization-restraint', disposition: 'active-slice-a' },
+  { number: 17, alias: 'RULE_COMPONENT_RESPONSIBILITY', destination: 'react.component-responsibility', disposition: 'active-slice-a' },
+  { number: 18, alias: 'RULE_HOOK_SAFETY', destination: 'react.hook-safety', disposition: 'active-slice-a' },
+  { number: 19, alias: 'RULE_EVENT_LOGIC', destination: 'react.event-logic', disposition: 'active-slice-a' },
+  { number: 20, alias: 'RULE_NEXT_BOUNDARIES', destination: 'nextjs.server-client-boundaries', disposition: 'later-slice' },
+  { number: 21, alias: 'RULE_SERVER_SECRETS', destination: 'security.server-secrets', disposition: 'later-slice' },
+  { number: 22, alias: 'RULE_NEXT_PRIMITIVES', destination: 'nextjs.framework-primitives', disposition: 'later-slice' },
+  { number: 23, alias: 'RULE_URL_STATE', destination: 'nextjs.url-state', disposition: 'later-slice' },
+  { number: 24, alias: 'RULE_DATA_FETCHING', destination: 'nextjs.data-fetching-boundaries', disposition: 'later-slice' },
+  { number: 25, alias: 'RULE_ASYNC_SAFETY', destination: 'async-control-flow.overlap-safety', disposition: 'active-slice-a' },
+  { number: 26, alias: 'RULE_ERROR_HANDLING', destination: 'async-control-flow.explicit-failure-behavior', disposition: 'active-slice-a' },
+  { number: 27, alias: 'RULE_ASYNC_UI', destination: 'async-control-flow.user-visible-states', disposition: 'active-slice-a' },
+  { number: 28, alias: 'RULE_API_STABILITY', destination: 'data-boundaries.public-contract-stability', disposition: 'active-slice-a' },
+  { number: 29, alias: 'RULE_BOUNDARY_NORMALIZATION', destination: 'data-boundaries.normalize-external-data', disposition: 'active-slice-a' },
+  { number: 30, alias: 'RULE_ACCESSIBILITY', destination: 'accessibility.web-baseline', disposition: 'later-slice' },
+  { number: 31, alias: 'RULE_SECURITY_INPUT', destination: 'security.untrusted-input', disposition: 'later-slice' },
+  { number: 32, alias: 'RULE_AUTHORIZATION', destination: 'security.authorization-boundary', disposition: 'later-slice' },
+  { number: 33, alias: 'RULE_DEPENDENCY_RESTRAINT', destination: 'implementation-design.dependency-restraint', disposition: 'active-slice-a' },
+  { number: 34, alias: 'RULE_TEST_BEHAVIOR', destination: 'testing.behavior-over-implementation', disposition: 'active-slice-a' },
+  { number: 35, alias: 'RULE_TEST_CHANGES', destination: 'testing.change-driven-coverage', disposition: 'active-slice-a' },
+  { number: 36, alias: 'RULE_SIDE_EFFECTS', destination: 'implementation-design.localized-side-effects', disposition: 'active-slice-a' },
+  { number: 37, alias: 'RULE_COMMENTS', destination: 'ordinary-or-project-documentation', disposition: 'retired' },
+  { number: 38, alias: 'RULE_DEAD_CODE', destination: 'mechanical-controls-and-core.verify-before-completion', disposition: 'retired' },
+  { number: 39, alias: 'RULE_VERIFICATION', destination: 'core.verify-before-completion', disposition: 'active-slice-a' },
+  { number: 40, alias: 'RULE_DIFF_REVIEW', destination: 'core.verify-before-completion', disposition: 'active-slice-a' },
+  { number: 41, alias: 'RULE_NO_GUESSING', destination: 'core.inspect-before-change', disposition: 'active-slice-a' },
+  { number: 42, alias: 'RULE_ASSUMPTIONS', destination: 'core.inspect-before-change', disposition: 'active-slice-a' },
+  { number: 43, alias: 'RULE_ROOT_CAUSE', destination: 'debugging.root-cause-discipline', disposition: 'later-slice' },
+  { number: 44, alias: 'RULE_NO_OPPORTUNISTIC_REFACTOR', destination: 'core.minimal-change', disposition: 'active-slice-a' },
+] as const
 const requiredDomainIds = new Set([
   'async-control-flow.explicit-failure-behavior',
   'async-control-flow.overlap-safety',
@@ -87,6 +149,9 @@ describe('canonical Slice A catalog', () => {
     expect(new Set(ids).size).toBe(ids.length)
     expect(new Set(aliases).size).toBe(aliases.length)
     expect(aliases).toHaveLength(33)
+    expect(Object.fromEntries(catalog.rules.map(({ id, aliases: ruleAliases }) => [id, ruleAliases]))).toEqual(
+      expectedRuleAliases,
+    )
     expect(paths).toEqual([...paths].sort())
     expect(catalog.rules.every(({ status, rationale }) => status === 'active' && rationale.trim())).toBe(true)
 
@@ -123,18 +188,17 @@ describe('canonical Slice A catalog', () => {
     expect(catalog.provenance.sourceDocument).toBe(
       'docs/refs/React & Next.js — Universal LLM Development Rules.md',
     )
-    expect(catalog.provenance.sourceRules.map(({ number }) => number)).toEqual(
-      Array.from({ length: 44 }, (_, index) => index + 1),
-    )
-    expect(catalog.provenance.sourceRules.map(({ alias }) => alias)).toEqual(originalAliases)
+    expect(
+      catalog.provenance.sourceRules.map(({ number, alias, destination, disposition }) => ({
+        number,
+        alias,
+        destination,
+        disposition,
+      })),
+    ).toEqual(expectedProvenance)
 
     for (const sourceRule of catalog.provenance.sourceRules) {
-      const expectedDisposition = laterSliceNumbers.has(sourceRule.number)
-        ? 'later-slice'
-        : retiredNumbers.has(sourceRule.number)
-          ? 'retired'
-          : 'active-slice-a'
-      expect(sourceRule.disposition).toBe(expectedDisposition)
+      const expectedDisposition = expectedProvenance[sourceRule.number - 1]!.disposition
       const expectedMergeMembers = [2, 44].includes(sourceRule.number)
         ? [2, 44]
         : [5, 41, 42].includes(sourceRule.number)
