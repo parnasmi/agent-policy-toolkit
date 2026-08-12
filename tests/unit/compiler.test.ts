@@ -6,6 +6,8 @@ import type { Bundle, ProjectPolicy, Rule } from '../../src/domain/policy.js'
 import { renderBundle } from '../../src/compiler/render-bundle.js'
 import { renderRule } from '../../src/compiler/render-rule.js'
 import { resolvePolicy } from '../../src/compiler/resolve-policy.js'
+import { applyOverlays } from '../../src/compiler/overlays.js'
+import { parseRuleMarkdown } from '../../src/schema/frontmatter.js'
 
 const rules = [
   {
@@ -125,6 +127,39 @@ describe('policy compiler', () => {
     const resolved = resolvePolicy({ rules, bundles: catalogBundles }, { ...project, overlays: [] })
 
     expect(resolved.bundles.map(({ id }) => id)).toEqual(['core', 'base', 'feature'])
+  })
+
+  it('renders the parsed canonical title and every canonical body section for maintainers', () => {
+    const parsed = parseRuleMarkdown(`---
+id: core.task-fidelity
+status: active
+strength: required
+applicability: { domains: [core] }
+override: forbidden
+enforcement: prompt
+aliases: [RULE_TASK_FIDELITY]
+---
+# Honor the task
+
+## Instruction
+
+Implement the explicit task without speculative scope expansion.
+
+## Rationale
+
+Speculative work changes unrequested behavior.
+`, 'catalog/rules/core/task-fidelity.md')
+    const rule = applyOverlays([parsed], []).rules[0]!
+
+    expect(renderRule(rule, 'maintainer')).toBe(`# Honor the task
+
+## Instruction
+
+Implement the explicit task without speculative scope expansion.
+
+## Rationale
+
+Speculative work changes unrequested behavior.`)
   })
 
   it('selects only the profile sections and preserves their canonical text', async () => {

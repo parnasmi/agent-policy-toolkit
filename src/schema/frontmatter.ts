@@ -6,6 +6,8 @@ import { validateDocument } from './validator.js'
 
 export interface MarkdownSection {
   readonly title: string
+  /** Exact Markdown heading that introduces this section. */
+  readonly heading: string
   /** Exact source text between this heading and the next heading. */
   readonly source: string
 }
@@ -53,7 +55,7 @@ function parseSections(body: string, path: string): readonly MarkdownSection[] {
     }
 
     titles.add(title)
-    sections.push({ title, source: body.slice(start, end) })
+    sections.push({ title, heading: match[0], source: body.slice(start, end) })
   }
 
   return sections

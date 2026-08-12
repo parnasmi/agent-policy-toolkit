@@ -4,18 +4,31 @@ export type RenderProfile = 'core' | 'domain-skill' | 'code-review' | 'maintaine
 
 interface SourceSection {
   readonly title: string
+  readonly heading?: string
   readonly source: string
 }
 
 type SourceBackedRule = OverlayRule & { readonly sections?: readonly SourceSection[] }
 
-function section(title: string, value: string | undefined): string | undefined {
-  return value === undefined || value.trim() === '' ? undefined : `## ${title}\n\n${value.trim()}`
+function section(heading: string, value: string | undefined, includeEmpty = false): string | undefined {
+  if (value === undefined || value.trim() === '') return includeEmpty ? heading : undefined
+  return `${heading}\n\n${value.trim()}`
 }
 
 function canonicalSection(rule: SourceBackedRule, title: string, fallback: string | undefined): string | undefined {
-  const source = rule.sections?.find((candidate) => candidate.title === title)?.source
-  return section(title, title === 'Instruction' && rule.replacement !== undefined ? rule.replacement : source ?? fallback)
+  const source = rule.sections?.find((candidate) => candidate.title === title)
+  return section(
+    source?.heading ?? `## ${title}`,
+    title === 'Instruction' && rule.replacement !== undefined ? rule.replacement : source?.source ?? fallback,
+  )
+}
+
+function completeCanonicalSection(rule: SourceBackedRule, source: SourceSection): string {
+  return section(
+    source.heading ?? `## ${source.title}`,
+    source.title === 'Instruction' && rule.replacement !== undefined ? rule.replacement : source.source,
+    true,
+  )!
 }
 
 function overlaySections(rule: OverlayRule): string[] {
@@ -40,7 +53,9 @@ export function renderRule(rule: SourceBackedRule, profile: RenderProfile): stri
             canonicalSection(rule, 'Instruction', rule.instruction),
             canonicalSection(rule, 'Verification', rule.verification),
           ]
-        : [
+        : rule.sections?.some(({ heading }) => heading !== undefined)
+          ? rule.sections.map((source) => completeCanonicalSection(rule, source))
+          : [
             `# ${rule.title ?? rule.canonicalId}`,
             ...(rule.sections === undefined
               ? [
@@ -50,7 +65,7 @@ export function renderRule(rule: SourceBackedRule, profile: RenderProfile): stri
                   canonicalSection(rule, 'Examples', rule.examples),
                   canonicalSection(rule, 'Verification', rule.verification),
                 ]
-              : rule.sections.map(({ title, source }) => canonicalSection(rule, title, source))),
+              : rule.sections.map((source) => completeCanonicalSection(rule, source))),
           ]
 
   return [...selected, ...overlaySections(rule)].filter((value): value is string => value !== undefined).join('\n\n')
