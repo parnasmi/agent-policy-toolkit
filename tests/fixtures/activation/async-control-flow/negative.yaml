@@ -1,0 +1,25 @@
+- id: async-docs
+  task: Document the request lifecycle in the contributor guide.
+  repositorySignals: [docs/contributing.md]
+  expectedBundle: null
+  reason: Documentation does not implement async behavior.
+- id: async-react-render
+  task: Derive a component label from current props during render.
+  repositorySignals: [src/components/Status.tsx, react]
+  expectedBundle: react
+  reason: This React render decision has no asynchronous control flow.
+- id: async-type-only
+  task: Rename an exported TypeScript interface for a request payload.
+  repositorySignals: [src/api/payload.ts]
+  expectedBundle: typescript
+  reason: A type-only rename does not change async behavior.
+- id: async-test-only
+  task: Add a test for an already-handled parser error.
+  repositorySignals: [tests/unit/parser.test.ts]
+  expectedBundle: testing
+  reason: The task is test-only.
+- id: async-conceptual-contract
+  task: Explain why public API fields should remain stable.
+  repositorySignals: [user question]
+  expectedBundle: data-boundaries
+  reason: The conceptual question concerns public contracts.

@@ -1,0 +1,14 @@
+id: implementation-design
+description: 'Structural implementation choices: reuse, restrained abstractions and dependencies, simple solutions, and localized side effects.'
+members:
+  - implementation-design.reuse-before-creation
+  - implementation-design.abstraction-restraint
+  - implementation-design.simplicity
+  - implementation-design.dependency-restraint
+  - implementation-design.localized-side-effects
+applicability:
+  technologies: [typescript, javascript]
+  filePatterns: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx']
+  taskIntents: [implementation-change, structural-design, dependency-change]
+  exclusions: [documentation-only, test-only, configuration-only]
+dependencies: []

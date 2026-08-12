@@ -1,0 +1,12 @@
+id: core
+description: Always-on technology-independent policy for task fidelity, minimal changes, stable names, style, inspection, architecture, and verification.
+members:
+  - core.task-fidelity
+  - core.minimal-change
+  - core.name-stability
+  - core.style-consistency
+  - core.inspect-before-change
+  - core.architecture-consistency
+  - core.verify-before-completion
+applicability: {}
+dependencies: []

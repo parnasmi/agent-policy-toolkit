@@ -1,0 +1,25 @@
+- id: testing-regression
+  task: Add a regression test that demonstrates the reported checkout defect.
+  repositorySignals: [tests/features/checkout.test.ts, bug report]
+  expectedBundle: testing
+  reason: The task adds behavior-focused regression coverage.
+- id: testing-changed-branch
+  task: Extend tests for the new validation branch introduced by the feature.
+  repositorySignals: [tests/unit/validation.test.ts, src/validation.ts]
+  expectedBundle: testing
+  reason: The work covers changed behavior.
+- id: testing-real-behavior
+  task: Replace a mock-only assertion with an observable user outcome.
+  repositorySignals: [tests/components/search.test.tsx, existing mock]
+  expectedBundle: testing
+  reason: The task changes testing behavior and assertion focus.
+- id: testing-edge-case
+  task: Add a boundary-case test for an empty imported data set.
+  repositorySignals: [tests/import/parse.test.ts, src/import/parse.ts]
+  expectedBundle: testing
+  reason: The task adds coverage for a behavioral edge case.
+- id: testing-refactor-safety
+  task: Characterize existing output before refactoring a calculation.
+  repositorySignals: [tests/unit/totals.test.ts, src/totals.ts]
+  expectedBundle: testing
+  reason: The task establishes test coverage for behavior preservation.

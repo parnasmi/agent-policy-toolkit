@@ -1,0 +1,25 @@
+- id: typescript-docs
+  task: Update the TypeScript migration guide with a completed milestone.
+  repositorySignals: [docs/typescript-migration.md]
+  expectedBundle: null
+  reason: This documentation-only change does not alter types.
+- id: typescript-react-effect
+  task: Synchronize a React subscription with a component lifecycle.
+  repositorySignals: [src/components/Feed.tsx, react]
+  expectedBundle: react
+  reason: The task is an effect decision, not a type change.
+- id: typescript-test-only
+  task: Rename a test case to describe a regression more clearly.
+  repositorySignals: [tests/unit/parser.test.ts]
+  expectedBundle: testing
+  reason: Renaming a test does not need TypeScript policy.
+- id: typescript-async-question
+  task: Explain when an asynchronous request should be cancelled.
+  repositorySignals: [user question]
+  expectedBundle: async-control-flow
+  reason: The conceptual question concerns async behavior.
+- id: typescript-package-metadata
+  task: Change the package description text.
+  repositorySignals: [package.json]
+  expectedBundle: null
+  reason: Package metadata alone does not activate TypeScript policy.

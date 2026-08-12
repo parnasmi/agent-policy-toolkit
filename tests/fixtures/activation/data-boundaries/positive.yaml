@@ -1,0 +1,25 @@
+- id: data-boundaries-parse-response
+  task: Parse an untrusted API response before using it in application state.
+  repositorySignals: [src/api/customer.ts, external JSON]
+  expectedBundle: data-boundaries
+  reason: The task validates external data at a boundary.
+- id: data-boundaries-public-contract
+  task: Preserve an exported API field while extending the internal implementation.
+  repositorySignals: [src/api/public.ts, downstream consumers]
+  expectedBundle: data-boundaries
+  reason: The task protects a public contract.
+- id: data-boundaries-normalize-webhook
+  task: Normalize third-party webhook fields into the local domain model.
+  repositorySignals: [src/integrations/webhook.ts, external payload]
+  expectedBundle: data-boundaries
+  reason: The requested behavior handles external-data normalization.
+- id: data-boundaries-runtime-schema
+  task: Add runtime validation for a configuration object loaded from disk.
+  repositorySignals: [src/config/load.ts, untrusted file]
+  expectedBundle: data-boundaries
+  reason: The task validates an untrusted boundary.
+- id: data-boundaries-versioned-api
+  task: Change an endpoint response without breaking existing clients.
+  repositorySignals: [src/api/orders.ts, public endpoint]
+  expectedBundle: data-boundaries
+  reason: The work changes a public contract boundary.

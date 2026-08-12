@@ -1,0 +1,25 @@
+- id: implementation-design-docs
+  task: Correct a spelling mistake in the architecture guide.
+  repositorySignals: [docs/architecture.md]
+  expectedBundle: null
+  reason: Documentation edits do not need implementation-design policy.
+- id: implementation-design-react-state
+  task: Derive a view value from React props instead of storing it in state.
+  repositorySignals: [src/components/Invoice.tsx, react]
+  expectedBundle: react
+  reason: This is a React state decision.
+- id: implementation-design-type-only
+  task: Tighten a TypeScript union for an existing API response.
+  repositorySignals: [src/api/types.ts]
+  expectedBundle: typescript
+  reason: The task is type-specific rather than structural design.
+- id: implementation-design-test-only
+  task: Add a regression test for a changed validation branch.
+  repositorySignals: [tests/unit/validation.test.ts]
+  expectedBundle: testing
+  reason: The task changes tests only.
+- id: implementation-design-conceptual
+  task: Explain what a stale asynchronous result is.
+  repositorySignals: [user question]
+  expectedBundle: null
+  reason: The conceptual question is outside implementation design.

@@ -1,0 +1,25 @@
+- id: react-derived-state
+  task: Remove duplicated component state and derive the filtered rows from props.
+  repositorySignals: [src/components/OrdersTable.tsx, react]
+  expectedBundle: react
+  reason: The task changes React state derivation.
+- id: react-effect-subscription
+  task: Synchronize a browser subscription with component lifecycle and cleanup.
+  repositorySignals: [src/components/Notifications.tsx, useEffect]
+  expectedBundle: react
+  reason: The task is about React effect discipline.
+- id: react-custom-hook
+  task: Extract repeated component state behavior into a custom React hook.
+  repositorySignals: [src/hooks/usePagination.ts, react]
+  expectedBundle: react
+  reason: The task changes hook behavior.
+- id: react-event-handler
+  task: Move submit-event logic out of render-time computation.
+  repositorySignals: [src/components/PaymentForm.tsx, onSubmit]
+  expectedBundle: react
+  reason: The work changes React event logic.
+- id: react-component-boundary
+  task: Split a component whose rendering and data coordination responsibilities are mixed.
+  repositorySignals: [src/components/Dashboard.tsx, react]
+  expectedBundle: react
+  reason: The task is a React component responsibility decision.

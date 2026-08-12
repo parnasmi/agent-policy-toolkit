@@ -1,0 +1,16 @@
+id: react
+description: React component state, effects, hooks, events, and rendering decisions.
+members:
+  - react.unidirectional-data-flow
+  - react.derived-state
+  - react.effect-discipline
+  - react.optimization-restraint
+  - react.component-responsibility
+  - react.hook-safety
+  - react.event-logic
+applicability:
+  technologies: [react]
+  filePatterns: ['**/*.tsx', '**/*.jsx']
+  taskIntents: [component-change, hook-change, state-design, effect-design]
+  exclusions: [non-react-template, documentation-only]
+dependencies: []

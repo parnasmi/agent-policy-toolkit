@@ -1,0 +1,25 @@
+- id: react-tsx-documentation
+  task: Update explanatory JSX comments in a .tsx component without changing behavior.
+  repositorySignals: [src/components/Guide.tsx, documentation-only]
+  expectedBundle: null
+  reason: A .tsx documentation edit is not a React behavior change.
+- id: react-typescript-utility
+  task: Add a pure TypeScript currency formatter utility.
+  repositorySignals: [src/utils/currency.ts]
+  expectedBundle: typescript
+  reason: A TypeScript-only utility has no React behavior.
+- id: react-test-only
+  task: Add a test assertion for an existing component label without changing the component.
+  repositorySignals: [tests/components/Label.test.tsx, test-only]
+  expectedBundle: testing
+  reason: A test-only change does not alter React behavior.
+- id: react-conceptual-async
+  task: Explain how to prevent stale network responses.
+  repositorySignals: [user question]
+  expectedBundle: async-control-flow
+  reason: This conceptual question is about async control flow.
+- id: react-non-react-template
+  task: Edit a .tsx email template rendered outside React.
+  repositorySignals: [src/emails/receipt.tsx, non-react-template]
+  expectedBundle: null
+  reason: The file extension alone must not activate React policy.

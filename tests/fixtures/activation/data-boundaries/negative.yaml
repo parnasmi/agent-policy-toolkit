@@ -1,0 +1,25 @@
+- id: data-boundaries-docs
+  task: Add a glossary definition for normalization.
+  repositorySignals: [docs/glossary.md]
+  expectedBundle: null
+  reason: A glossary edit does not change a data boundary.
+- id: data-boundaries-react-event
+  task: Move a React click handler out of render logic.
+  repositorySignals: [src/components/SaveButton.tsx, react]
+  expectedBundle: react
+  reason: The task is React event behavior.
+- id: data-boundaries-internal-type
+  task: Change a private TypeScript helper parameter from string to number.
+  repositorySignals: [src/utils/ids.ts]
+  expectedBundle: typescript
+  reason: An internal type change has no external boundary.
+- id: data-boundaries-test-only
+  task: Add a test case for an existing public API response.
+  repositorySignals: [tests/api/orders.test.ts]
+  expectedBundle: testing
+  reason: The requested change is test-only.
+- id: data-boundaries-conceptual-effects
+  task: Explain when React effects need cleanup.
+  repositorySignals: [user question]
+  expectedBundle: react
+  reason: The conceptual question is about React effects.

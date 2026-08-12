@@ -1,0 +1,11 @@
+id: typescript
+description: TypeScript type-safety and source-type reuse decisions.
+members:
+  - typescript.preserve-type-safety
+  - typescript.reuse-source-types
+applicability:
+  technologies: [typescript]
+  filePatterns: ['**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts']
+  taskIntents: [type-change, type-design, api-design]
+  exclusions: [javascript-only, documentation-only, configuration-only]
+dependencies: []

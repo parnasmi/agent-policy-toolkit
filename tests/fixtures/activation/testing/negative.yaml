@@ -1,0 +1,25 @@
+- id: testing-docs
+  task: Update the testing guide with a command example.
+  repositorySignals: [docs/testing.md]
+  expectedBundle: null
+  reason: Documentation does not change test behavior.
+- id: testing-react-component
+  task: Add a loading spinner to a React component.
+  repositorySignals: [src/components/Report.tsx, react]
+  expectedBundle: react
+  reason: The requested change is production component behavior.
+- id: testing-type-only
+  task: Extract a shared TypeScript response type.
+  repositorySignals: [src/api/types.ts]
+  expectedBundle: typescript
+  reason: The task is a type change, not test work.
+- id: testing-async-behavior
+  task: Ensure an obsolete request cannot overwrite newer results.
+  repositorySignals: [src/features/search/load.ts, request ordering]
+  expectedBundle: async-control-flow
+  reason: The task changes async behavior.
+- id: testing-conceptual-boundary
+  task: Explain when external payloads need runtime validation.
+  repositorySignals: [user question]
+  expectedBundle: data-boundaries
+  reason: The conceptual question concerns data boundaries.

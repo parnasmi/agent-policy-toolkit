@@ -1,0 +1,11 @@
+id: testing
+description: Test behavior and coverage decisions driven by changed behavior.
+members:
+  - testing.behavior-over-implementation
+  - testing.change-driven-coverage
+applicability:
+  technologies: [typescript, javascript]
+  filePatterns: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx', 'tests/**/*']
+  taskIntents: [test-change, regression-test, coverage-design]
+  exclusions: [production-only, documentation-only, configuration-only]
+dependencies: []

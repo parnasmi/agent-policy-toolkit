@@ -1,0 +1,12 @@
+id: async-control-flow
+description: Async operation overlap, explicit failure behavior, and user-visible states.
+members:
+  - async-control-flow.overlap-safety
+  - async-control-flow.explicit-failure-behavior
+  - async-control-flow.user-visible-states
+applicability:
+  technologies: [typescript, javascript]
+  filePatterns: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx']
+  taskIntents: [async-change, error-handling, loading-state]
+  exclusions: [synchronous-only, documentation-only, configuration-only]
+dependencies: []

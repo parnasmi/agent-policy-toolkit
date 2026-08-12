@@ -1,0 +1,25 @@
+- id: async-overlapping-search
+  task: Prevent an older search response from replacing newer results.
+  repositorySignals: [src/features/search/search.ts, request sequence]
+  expectedBundle: async-control-flow
+  reason: The task handles overlapping asynchronous operations.
+- id: async-failure-state
+  task: Show an explicit recoverable error after a failed account fetch.
+  repositorySignals: [src/features/account/load.ts, error state]
+  expectedBundle: async-control-flow
+  reason: The requested behavior defines async failure handling.
+- id: async-loading-state
+  task: Add a loading state while a report is generated.
+  repositorySignals: [src/features/reports/generate.ts, pending UI]
+  expectedBundle: async-control-flow
+  reason: The task changes a user-visible asynchronous state.
+- id: async-cancellation
+  task: Cancel an in-flight request when a newer selection supersedes it.
+  repositorySignals: [src/features/map/load-markers.ts, AbortController]
+  expectedBundle: async-control-flow
+  reason: The change addresses cancellation and stale results.
+- id: async-retry-result
+  task: Preserve the explicit failure result when a retry cannot complete.
+  repositorySignals: [src/services/export.ts, retry branch]
+  expectedBundle: async-control-flow
+  reason: The task controls failure behavior in asynchronous work.

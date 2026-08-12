@@ -1,0 +1,12 @@
+id: data-boundaries
+description: Public contracts, external-data normalization, and runtime validation at untrusted boundaries.
+members:
+  - data-boundaries.public-contract-stability
+  - data-boundaries.normalize-external-data
+  - data-boundaries.runtime-validation
+applicability:
+  technologies: [typescript, javascript]
+  filePatterns: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx']
+  taskIntents: [api-boundary, external-data, contract-change, runtime-validation]
+  exclusions: [internal-only, documentation-only, configuration-only]
+dependencies: []

@@ -1,0 +1,25 @@
+- id: implementation-design-new-module
+  task: Add a focused module for reusable pagination calculations.
+  repositorySignals: [src/pagination/calculate.ts, existing utility conventions]
+  expectedBundle: implementation-design
+  reason: The task chooses a new implementation boundary and reuse strategy.
+- id: implementation-design-reduce-abstraction
+  task: Replace a needless factory layer with direct construction in one feature.
+  repositorySignals: [src/features/orders/factory.ts, direct callers]
+  expectedBundle: implementation-design
+  reason: The requested change is an abstraction decision.
+- id: implementation-design-dependency
+  task: Decide whether an installed helper can replace a proposed date dependency.
+  repositorySignals: [package.json, src/utils/date.ts]
+  expectedBundle: implementation-design
+  reason: The task evaluates dependency restraint and reuse.
+- id: implementation-design-side-effect
+  task: Move a shared write to the narrow service that owns it.
+  repositorySignals: [src/services/notifications.ts, src/features/invoices]
+  expectedBundle: implementation-design
+  reason: The change localizes a side effect.
+- id: implementation-design-simplify
+  task: Simplify a feature implementation without expanding its behavior.
+  repositorySignals: [src/features/search/query.ts, existing tests]
+  expectedBundle: implementation-design
+  reason: The task is a structural implementation choice.

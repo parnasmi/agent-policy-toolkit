@@ -1,0 +1,25 @@
+- id: typescript-preserve-inference
+  task: Replace an any-typed response with a precise discriminated union.
+  repositorySignals: [src/api/response.ts, tsconfig.json]
+  expectedBundle: typescript
+  reason: The change designs TypeScript types.
+- id: typescript-reuse-domain-type
+  task: Reuse the exported Order type in a new consumer instead of duplicating it.
+  repositorySignals: [src/domain/order.ts, src/features/orders]
+  expectedBundle: typescript
+  reason: The task concerns source-type reuse.
+- id: typescript-generic-boundary
+  task: Add a generic constraint that preserves callback parameter types.
+  repositorySignals: [src/utils/handlers.ts]
+  expectedBundle: typescript
+  reason: The requested behavior is TypeScript type safety.
+- id: typescript-nullability
+  task: Model an optional backend field without unsafe assertions.
+  repositorySignals: [src/api/customer.ts, strictNullChecks]
+  expectedBundle: typescript
+  reason: The task changes TypeScript nullability handling.
+- id: typescript-exported-contract
+  task: Type a public function return value using the existing domain model.
+  repositorySignals: [src/domain/user.ts, src/services/user-service.ts]
+  expectedBundle: typescript
+  reason: The work targets a TypeScript contract.
