@@ -1,5 +1,6 @@
 import type { ChangePlan } from '../domain/change-plan.js'
 import {
+  revalidateImmutablePreconditions,
   revalidatePreconditions,
   type ApplyFailure,
 } from './preconditions.js'
@@ -46,6 +47,10 @@ export async function applyPlan(
       async () => {
         const immediatelyCurrent = await revalidatePreconditions(plan, options)
         if ('ok' in immediatelyCurrent) throw new Error(immediatelyCurrent.message)
+      },
+      async () => {
+        const immutableFailure = await revalidateImmutablePreconditions(plan, options)
+        if (immutableFailure !== undefined) throw new Error(immutableFailure.message)
       },
     )
     return {

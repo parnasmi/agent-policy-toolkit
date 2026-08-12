@@ -46,6 +46,41 @@ export interface PreconditionsOptions {
   readonly toolkitVersion: string
 }
 
+/** Recheck reviewed plan identity, repository identity, toolkit version, and source bytes. */
+export async function revalidateImmutablePreconditions(
+  plan: ChangePlan,
+  options: PreconditionsOptions,
+): Promise<ApplyFailure | undefined> {
+  try {
+    const shapeFailure = validatePlanShape(plan)
+    if (shapeFailure !== undefined) return shapeFailure
+    const repositoryRoot = await realpath(options.repositoryRoot)
+    if (sha256Utf8(repositoryRoot) !== plan.repositoryRootFingerprint) {
+      return failure('repository-mismatch', 'Change Plan was generated for another repository root')
+    }
+    if (plan.toolkitVersion !== options.toolkitVersion) {
+      return failure(
+        'toolkit-mismatch',
+        `Change Plan toolkit version ${plan.toolkitVersion} does not match ${options.toolkitVersion}`,
+      )
+    }
+    const sourceDrift: string[] = []
+    for (const [path, expectedHash] of Object.entries(plan.sourceHashes)) {
+      const target = await resolveConfinedPath(repositoryRoot, path)
+      const current = await readCurrent(target.path)
+      if (current === undefined || sha256Utf8(current) !== expectedHash) sourceDrift.push(path)
+    }
+    return sourceDrift.length === 0
+      ? undefined
+      : failure('source-drift', 'Canonical policy sources changed after plan review', sourceDrift)
+  } catch (error) {
+    return failure(
+      'invalid-plan',
+      `Invalid immutable Change Plan precondition: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
 function failure(
   code: ApplyFailureCode,
   message: string,

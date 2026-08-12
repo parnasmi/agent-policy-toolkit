@@ -167,6 +167,28 @@ describe('transactional plan application', () => {
     await expectNoTransactionDebris(root)
   })
 
+  it('revalidates canonical sources in the final path-check-to-write window', async () => {
+    const { parent, root } = await sandbox()
+    const reviewed = await plan(parent, root, [artifact('new.md', generated('new\n'))])
+    const hooks: TransactionHooks = {
+      afterPathCheck: async ({ phase }) => {
+        if (phase === 'prepare') {
+          await writeFile(join(root, '.agent-policy/policy.yaml'), 'changed at write boundary\n')
+        }
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    await expectMissing(join(root, 'new.md'))
+    await expectNoTransactionDebris(root)
+  })
+
   it('rejects a changed generated artifact before writing another target', async () => {
     const { parent, root } = await sandbox()
     const previous = generated('old\n')
@@ -228,6 +250,100 @@ describe('transactional plan application', () => {
     await expectMissing(join(root, 'nested/b-new.md'))
     await expectMissing(join(root, 'nested'))
     await expectNoTransactionDebris(root)
+  })
+
+  it('preserves a concurrently edited installed target and its original backup on rollback', async () => {
+    const { parent, root } = await sandbox()
+    await writeFile(join(root, 'a-owned.md'), generated('old\n'))
+    const reviewed = await plan(parent, root, [
+      artifact('a-owned.md', generated('reviewed\n')),
+      artifact('b-new.md', generated('created\n')),
+    ])
+    const hooks: TransactionHooks = {
+      beforeRename: async ({ phase, operationIndex }) => {
+        if (phase === 'install' && operationIndex === 1) {
+          await writeFile(join(root, 'a-owned.md'), generated('concurrent\n'))
+          throw new Error('stop after concurrent edit')
+        }
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    if (result.ok) throw new Error('expected transaction failure')
+    expect(result.message).toMatch(/ROLLBACK FAILED/i)
+    expect(result.rollbackFailures).toEqual([
+      expect.stringMatching(/a-owned\.md.*changed during rollback/i),
+      expect.stringMatching(/a-owned\.md.*backup.*preserved/i),
+    ])
+    expect(await readFile(join(root, 'a-owned.md'), 'utf8')).toBe(generated('concurrent\n'))
+    expect((await readdir(root)).some((name) => name.includes('.backup'))).toBe(true)
+  })
+
+  it('uses installed inode identity when concurrent replacement has identical bytes', async () => {
+    const { parent, root } = await sandbox()
+    await writeFile(join(root, 'a-owned.md'), generated('old\n'))
+    const reviewedContent = generated('reviewed\n')
+    const reviewed = await plan(parent, root, [
+      artifact('a-owned.md', reviewedContent),
+      artifact('b-new.md', generated('created\n')),
+    ])
+    const hooks: TransactionHooks = {
+      beforeRename: async ({ phase, operationIndex }) => {
+        if (phase !== 'install' || operationIndex !== 1) return
+        const concurrentPath = join(root, 'concurrent.md')
+        await writeFile(concurrentPath, reviewedContent)
+        const { rename } = await import('node:fs/promises')
+        await rename(concurrentPath, join(root, 'a-owned.md'))
+        throw new Error('stop after same-byte replacement')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    if (result.ok) throw new Error('expected transaction failure')
+    expect(result.rollbackFailures).toEqual([
+      expect.stringMatching(/a-owned\.md.*changed during rollback/i),
+      expect.stringMatching(/a-owned\.md.*backup.*preserved/i),
+    ])
+    expect(await readFile(join(root, 'a-owned.md'), 'utf8')).toBe(reviewedContent)
+    expect((await readdir(root)).some((name) => name.includes('.backup'))).toBe(true)
+  })
+
+  it('removes shared created parent directories deepest-first after rollback', async () => {
+    const { parent, root } = await sandbox()
+    const reviewed = await plan(parent, root, [
+      artifact('nested/a/first.md', generated('first\n')),
+      artifact('nested/b/second.md', generated('second\n')),
+    ])
+    const hooks: TransactionHooks = {
+      beforeRename: ({ phase, operationIndex }) => {
+        if (phase === 'install' && operationIndex === 1) throw new Error('stop in sibling')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'transaction-failed',
+      rollbackFailures: [],
+    })
+    await expectMissing(join(root, 'nested'))
   })
 
   it('does not overwrite a target created at the mutation boundary', async () => {
@@ -373,7 +489,8 @@ describe('transactional plan application', () => {
     await mkdir(outside)
     const reviewed = await plan(parent, root, [artifact('safe/new.md', generated('new\n'))])
     const hooks: TransactionHooks = {
-      beforePrepare: async () => {
+      afterPathCheck: async ({ phase }) => {
+        if (phase !== 'prepare') return
         const { rename } = await import('node:fs/promises')
         await rename(join(root, 'safe'), movedSafe)
         await symlink(outside, join(root, 'safe'))
@@ -402,7 +519,7 @@ describe('transactional plan application', () => {
     ])
     let outsideTrapPath = ''
     const hooks: TransactionHooks = {
-      beforeRename: async ({ phase }) => {
+      afterPathCheck: async ({ phase }) => {
         if (phase !== 'backup') return
         const preparedName = (await readdir(join(root, 'safe')))
           .find((name) => name.includes('.agent-policy-transaction-'))
@@ -425,6 +542,40 @@ describe('transactional plan application', () => {
     await expectMissing(join(outside, 'owned.md'))
     expect(await readFile(outsideTrapPath, 'utf8')).toBe('outside trap\n')
     expect(await readFile(join(movedSafe, 'owned.md'), 'utf8')).toBe(generated('old\n'))
+  })
+
+  it('anchors no-replace installation to the reviewed parent directory', async () => {
+    const { parent, root } = await sandbox()
+    const outside = join(parent, 'outside')
+    const movedSafe = join(parent, 'moved-safe')
+    await mkdir(join(root, 'safe'))
+    await mkdir(outside)
+    const reviewed = await plan(parent, root, [artifact('safe/new.md', generated('new\n'))])
+    let outsideTrapPath = ''
+    const hooks: TransactionHooks = {
+      afterPathCheck: async ({ phase }) => {
+        if (phase !== 'install') return
+        const preparedName = (await readdir(join(root, 'safe')))
+          .find((name) => name.includes('.agent-policy-transaction-'))
+        if (preparedName === undefined) throw new Error('expected prepared sibling')
+        const { rename } = await import('node:fs/promises')
+        await rename(join(root, 'safe'), movedSafe)
+        await symlink(outside, join(root, 'safe'))
+        outsideTrapPath = join(outside, preparedName)
+        await writeFile(outsideTrapPath, 'outside trap\n')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    await expectMissing(join(outside, 'new.md'))
+    expect(await readFile(outsideTrapPath, 'utf8')).toBe('outside trap\n')
+    expect((await readdir(movedSafe)).some((name) => name.endsWith('.tmp'))).toBe(true)
   })
 
   it('reports rollback failures prominently with the affected path', async () => {
