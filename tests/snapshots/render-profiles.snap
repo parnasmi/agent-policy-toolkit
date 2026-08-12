@@ -1,0 +1,95 @@
+[core]
+
+## Instruction
+
+Use the canonical instruction.
+
+## Exceptions
+
+Exception text stays verbatim.
+
+Use the repository helper where it exists.
+
+[domain-skill]
+
+## Instruction
+
+Use the canonical instruction.
+
+## Rationale
+
+The canonical rationale explains the risk.
+
+## Exceptions
+
+Exception text stays verbatim.
+
+Use the repository helper where it exists.
+
+[code-review]
+
+# shared.rule
+
+## Instruction
+
+Use the canonical instruction.
+
+## Verification
+
+Verify the observable result.
+
+Use the repository helper where it exists.
+
+[maintainer]
+
+# Shared rule
+
+## Instruction
+
+Use the canonical instruction.
+
+## Rationale
+
+The canonical rationale explains the risk.
+
+## Exceptions
+
+Exception text stays verbatim.
+
+## Examples
+
+Example text stays verbatim.
+
+## Verification
+
+Verify the observable result.
+
+## Operational notes
+
+This canonical section is maintainer-only.
+
+Use the repository helper where it exists.
+
+[bundle]
+
+## Instruction
+
+Use the canonical instruction.
+
+## Rationale
+
+The canonical rationale explains the risk.
+
+## Exceptions
+
+Exception text stays verbatim.
+
+Use the repository helper where it exists.
+
+## Instruction
+
+Keep the feature behavior explicit.
+
+## Rationale
+
+Explicit behavior avoids accidental coupling.
