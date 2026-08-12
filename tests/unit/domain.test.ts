@@ -32,6 +32,7 @@ const changePlan = {
   repositoryRootFingerprint: 'root-fingerprint',
   sourceHashes: { '.agent-policy/policy.yaml': 'source-hash' },
   currentArtifactHashes: {},
+  currentManagedRegionHashes: {},
   desiredArtifacts: [artifact],
   removals: [],
   diagnostics: [],

@@ -81,6 +81,7 @@ describe('planner integrity primitives', () => {
       repositoryRootFingerprint: 'root',
       sourceHashes: { 'z.yaml': 'z', 'a.yaml': 'a' },
       currentArtifactHashes: { 'z.md': 'z', 'a.md': 'a' },
+      currentManagedRegionHashes: { 'z.md': 'zr', 'a.md': 'ar' },
       desiredArtifacts: [
         artifact('z.md', 'z\n'),
         artifact('a.md', 'a\n'),
@@ -98,6 +99,7 @@ describe('planner integrity primitives', () => {
       ...first,
       sourceHashes: { 'a.yaml': 'a', 'z.yaml': 'z' },
       currentArtifactHashes: { 'a.md': 'a', 'z.md': 'z' },
+      currentManagedRegionHashes: { 'a.md': 'ar', 'z.md': 'zr' },
       desiredArtifacts: [...first.desiredArtifacts].reverse(),
       removals: [...first.removals].reverse(),
       diagnostics: [...first.diagnostics].reverse(),
@@ -245,6 +247,7 @@ describe('Change Plan creation', () => {
       '.agents/skills/testing/SKILL.md': hash(`${generatedHeader}old\n`),
       'AGENTS.md': hash('# Team instructions\n'),
     })
+    expect(plan.currentManagedRegionHashes).toEqual({})
     expect(plan.diagnostics.map(({ code }) => code)).toEqual(['A', 'Z'])
     expect(plan.planHash).toBe(computePlanHash(plan))
     expect(await readFile(planPath, 'utf8')).toBe(serializeChangePlan(plan))

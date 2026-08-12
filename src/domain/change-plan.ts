@@ -8,6 +8,8 @@ export interface ChangePlan {
   readonly repositoryRootFingerprint: string
   readonly sourceHashes: Readonly<Record<string, string>>
   readonly currentArtifactHashes: Readonly<Record<string, string>>
+  /** Hashes of owned Managed Regions, independent from their containing file hashes. */
+  readonly currentManagedRegionHashes: Readonly<Record<string, string>>
   readonly desiredArtifacts: readonly VirtualArtifact[]
   readonly removals: readonly string[]
   readonly diagnostics: readonly Diagnostic[]

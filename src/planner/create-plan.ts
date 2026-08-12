@@ -164,6 +164,7 @@ export async function createChangePlan(request: PlanRequest): Promise<ChangePlan
     }
 
     const currentArtifactHashes: Record<string, string> = {}
+    const currentManagedRegionHashes: Record<string, string> = {}
     const plannedArtifacts: VirtualArtifact[] = []
     for (const artifact of [...projectedArtifacts].sort((left, right) =>
       compareStrings(left.path, right.path))) {
@@ -174,6 +175,9 @@ export async function createChangePlan(request: PlanRequest): Promise<ChangePlan
       if (inspection.state === 'clean') continue
       if (inspection.currentSha256 !== undefined) {
         currentArtifactHashes[artifact.path] = inspection.currentSha256
+      }
+      if (inspection.managedRegionSha256 !== undefined) {
+        currentManagedRegionHashes[artifact.path] = inspection.managedRegionSha256
       }
       plannedArtifacts.push({
         ...artifact,
@@ -202,6 +206,7 @@ export async function createChangePlan(request: PlanRequest): Promise<ChangePlan
       repositoryRootFingerprint: sha256Utf8(repositoryRoot),
       sourceHashes,
       currentArtifactHashes,
+      currentManagedRegionHashes,
       desiredArtifacts: plannedArtifacts,
       removals: plannedRemovals,
       diagnostics: sortDiagnostics(request.diagnostics ?? []),
