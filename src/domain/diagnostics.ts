@@ -60,7 +60,7 @@ export class PolicyError extends Error {
   readonly diagnostics: readonly Diagnostic[]
 
   constructor(diagnostics: readonly Diagnostic[]) {
-    const sortedDiagnostics = sortDiagnostics(diagnostics).map(sanitizeDiagnostic)
+    const sortedDiagnostics = sortDiagnostics(diagnostics.map(sanitizeDiagnostic))
     const message = sortedDiagnostics
       .map(({ path, ruleId, code, message: detail }) => {
         const subject = [path, ruleId, code].filter(Boolean).join(' ')

@@ -83,4 +83,26 @@ describe('normalized policy domain', () => {
     expect(error.message).not.toMatch(/\u001b\[/)
     expect(error.diagnostics).toHaveLength(1)
   })
+
+  it('sorts PolicyError diagnostics after stripping terminal color codes', () => {
+    const error = new PolicyError([
+      {
+        code: 'ANSI_PATH',
+        severity: 'error',
+        message: 'b path',
+        path: '\u001b[31mb/file.md\u001b[0m',
+      },
+      {
+        code: 'PLAIN_PATH',
+        severity: 'error',
+        message: 'a path',
+        path: 'a/file.md',
+      },
+    ])
+
+    expect(error.diagnostics.map((diagnostic) => diagnostic.path)).toEqual([
+      'a/file.md',
+      'b/file.md',
+    ])
+  })
 })
