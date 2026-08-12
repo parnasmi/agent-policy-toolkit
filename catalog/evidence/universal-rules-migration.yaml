@@ -1,0 +1,273 @@
+sourceDocument: 'docs/refs/React & Next.js — Universal LLM Development Rules.md'
+sourceRules:
+  - number: 1
+    alias: RULE_TASK_FIDELITY
+    destination: core.task-fidelity
+    disposition: active-slice-a
+    mergeMembers: [1]
+    rationale: Retained as the non-overridable shared boundary against speculative scope expansion.
+  - number: 2
+    alias: RULE_MINIMAL_CHANGE
+    destination: core.minimal-change
+    disposition: active-slice-a
+    mergeMembers: [2, 44]
+    rationale: Merged with opportunistic-cleanup restraint because both limit the diff to task-required work.
+  - number: 3
+    alias: RULE_NAME_STABILITY
+    destination: core.name-stability
+    disposition: active-slice-a
+    mergeMembers: [3]
+    rationale: Retained as a technology-independent compatibility safeguard.
+  - number: 4
+    alias: RULE_STYLE_CONSISTENCY
+    destination: core.style-consistency
+    disposition: active-slice-a
+    mergeMembers: [4]
+    rationale: Retained as a technology-independent repository consistency safeguard.
+  - number: 5
+    alias: RULE_INSPECT_BEFORE_CHANGE
+    destination: core.inspect-before-change
+    disposition: active-slice-a
+    mergeMembers: [5, 41, 42]
+    rationale: Merged with evidence and assumption discipline into one inspection behavior.
+  - number: 6
+    alias: RULE_ARCHITECTURE_CONSISTENCY
+    destination: core.architecture-consistency
+    disposition: active-slice-a
+    mergeMembers: [6]
+    rationale: Retained only as a technology-independent principle; concrete contracts remain project policy.
+  - number: 7
+    alias: RULE_REUSE_EXISTING
+    destination: implementation-design.reuse-before-creation
+    disposition: active-slice-a
+    mergeMembers: [7]
+    rationale: Retained as a distinct structural implementation choice.
+  - number: 8
+    alias: RULE_ABSTRACTION_RESTRAINT
+    destination: implementation-design.abstraction-restraint
+    disposition: active-slice-a
+    mergeMembers: [8]
+    rationale: Retained as a distinct structural implementation choice.
+  - number: 9
+    alias: RULE_SIMPLICITY
+    destination: implementation-design.simplicity
+    disposition: active-slice-a
+    mergeMembers: [9]
+    rationale: Retained as a distinct structural implementation choice.
+  - number: 10
+    alias: RULE_TYPE_SAFETY
+    destination: typescript.preserve-type-safety
+    disposition: active-slice-a
+    mergeMembers: [10]
+    rationale: Retained as the TypeScript safety rule.
+  - number: 11
+    alias: RULE_TYPE_REUSE
+    destination: typescript.reuse-source-types
+    disposition: active-slice-a
+    mergeMembers: [11]
+    rationale: Retained as the source-type reuse rule.
+  - number: 12
+    alias: RULE_RUNTIME_VALIDATION
+    destination: data-boundaries.runtime-validation
+    disposition: active-slice-a
+    mergeMembers: [12]
+    rationale: Moved to data boundaries because runtime trust is established where external values enter.
+  - number: 13
+    alias: RULE_REACT_DATA_FLOW
+    destination: react.unidirectional-data-flow
+    disposition: active-slice-a
+    mergeMembers: [13]
+    rationale: Retained as a React state-ownership rule.
+  - number: 14
+    alias: RULE_DERIVED_STATE
+    destination: react.derived-state
+    disposition: active-slice-a
+    mergeMembers: [14]
+    rationale: Retained as a React derived-state rule.
+  - number: 15
+    alias: RULE_EFFECT_DISCIPLINE
+    destination: react.effect-discipline
+    disposition: active-slice-a
+    mergeMembers: [15]
+    rationale: Retained as a React external-synchronization rule.
+  - number: 16
+    alias: RULE_REACT_OPTIMIZATION
+    destination: react.optimization-restraint
+    disposition: active-slice-a
+    mergeMembers: [16]
+    rationale: Retained as a React memoization restraint.
+  - number: 17
+    alias: RULE_COMPONENT_RESPONSIBILITY
+    destination: react.component-responsibility
+    disposition: active-slice-a
+    mergeMembers: [17]
+    rationale: Retained as a React component ownership rule.
+  - number: 18
+    alias: RULE_HOOK_SAFETY
+    destination: react.hook-safety
+    disposition: active-slice-a
+    mergeMembers: [18]
+    rationale: Retained as a durable React hook correctness constraint.
+  - number: 19
+    alias: RULE_EVENT_LOGIC
+    destination: react.event-logic
+    disposition: active-slice-a
+    mergeMembers: [19]
+    rationale: Retained as a React event-versus-effect rule.
+  - number: 20
+    alias: RULE_NEXT_BOUNDARIES
+    destination: nextjs.server-client-boundaries
+    disposition: later-slice
+    mergeMembers: [20]
+    rationale: Preserved for the later Next.js bundle rather than compiling framework policy into Slice A.
+  - number: 21
+    alias: RULE_SERVER_SECRETS
+    destination: security.server-secrets
+    disposition: later-slice
+    mergeMembers: [21]
+    rationale: Classified with security and deferred to the later security bundle.
+  - number: 22
+    alias: RULE_NEXT_PRIMITIVES
+    destination: nextjs.framework-primitives
+    disposition: later-slice
+    mergeMembers: [22]
+    rationale: Preserved for the later Next.js bundle.
+  - number: 23
+    alias: RULE_URL_STATE
+    destination: nextjs.url-state
+    disposition: later-slice
+    mergeMembers: [23]
+    rationale: Preserved for the later Next.js bundle.
+  - number: 24
+    alias: RULE_DATA_FETCHING
+    destination: nextjs.data-fetching-boundaries
+    disposition: later-slice
+    mergeMembers: [24]
+    rationale: Preserved for the later Next.js bundle.
+  - number: 25
+    alias: RULE_ASYNC_SAFETY
+    destination: async-control-flow.overlap-safety
+    disposition: active-slice-a
+    mergeMembers: [25]
+    rationale: Retained as asynchronous overlap and stale-result safety.
+  - number: 26
+    alias: RULE_ERROR_HANDLING
+    destination: async-control-flow.explicit-failure-behavior
+    disposition: active-slice-a
+    mergeMembers: [26]
+    rationale: Retained as deliberate asynchronous failure behavior.
+  - number: 27
+    alias: RULE_ASYNC_UI
+    destination: async-control-flow.user-visible-states
+    disposition: active-slice-a
+    mergeMembers: [27]
+    rationale: Retained as user-visible asynchronous state behavior.
+  - number: 28
+    alias: RULE_API_STABILITY
+    destination: data-boundaries.public-contract-stability
+    disposition: active-slice-a
+    mergeMembers: [28]
+    rationale: Moved to data boundaries because shared contracts govern crossings between producers and consumers.
+  - number: 29
+    alias: RULE_BOUNDARY_NORMALIZATION
+    destination: data-boundaries.normalize-external-data
+    disposition: active-slice-a
+    mergeMembers: [29]
+    rationale: Retained as external-data normalization at an application boundary.
+  - number: 30
+    alias: RULE_ACCESSIBILITY
+    destination: accessibility.web-baseline
+    disposition: later-slice
+    mergeMembers: [30]
+    rationale: Preserved for the later accessibility bundle.
+  - number: 31
+    alias: RULE_SECURITY_INPUT
+    destination: security.untrusted-input
+    disposition: later-slice
+    mergeMembers: [31]
+    rationale: Preserved for the later security bundle.
+  - number: 32
+    alias: RULE_AUTHORIZATION
+    destination: security.authorization-boundary
+    disposition: later-slice
+    mergeMembers: [32]
+    rationale: Preserved for the later security bundle.
+  - number: 33
+    alias: RULE_DEPENDENCY_RESTRAINT
+    destination: implementation-design.dependency-restraint
+    disposition: active-slice-a
+    mergeMembers: [33]
+    rationale: Retained as a structural dependency decision.
+  - number: 34
+    alias: RULE_TEST_BEHAVIOR
+    destination: testing.behavior-over-implementation
+    disposition: active-slice-a
+    mergeMembers: [34]
+    rationale: Retained as the observable-behavior testing rule.
+  - number: 35
+    alias: RULE_TEST_CHANGES
+    destination: testing.change-driven-coverage
+    disposition: active-slice-a
+    mergeMembers: [35]
+    rationale: Retained as risk-driven coverage for meaningful changes.
+  - number: 36
+    alias: RULE_SIDE_EFFECTS
+    destination: implementation-design.localized-side-effects
+    disposition: active-slice-a
+    mergeMembers: [36]
+    rationale: Retained as a structural side-effect ownership rule.
+  - number: 37
+    alias: RULE_COMMENTS
+    destination: ordinary-or-project-documentation
+    disposition: retired
+    mergeMembers: [37]
+    rationale: Retired from shared prompt policy because a universal comments rule lacks evidence and belongs in ordinary or project documentation.
+  - number: 38
+    alias: RULE_DEAD_CODE
+    destination: mechanical-controls-and-core.verify-before-completion
+    disposition: retired
+    mergeMembers: [38]
+    rationale: Retired as standalone prompt policy in favor of mechanical controls plus final verification.
+  - number: 39
+    alias: RULE_VERIFICATION
+    destination: core.verify-before-completion
+    disposition: active-slice-a
+    mergeMembers: [39, 40]
+    rationale: Merged with final diff review into one evidence-based completion rule.
+  - number: 40
+    alias: RULE_DIFF_REVIEW
+    destination: core.verify-before-completion
+    disposition: active-slice-a
+    mergeMembers: [39, 40]
+    rationale: Merged with verification because diff inspection is part of honest completion evidence.
+  - number: 41
+    alias: RULE_NO_GUESSING
+    destination: core.inspect-before-change
+    disposition: active-slice-a
+    mergeMembers: [5, 41, 42]
+    rationale: Merged with repository inspection because discoverable facts should be gathered before acting.
+  - number: 42
+    alias: RULE_ASSUMPTIONS
+    destination: core.inspect-before-change
+    disposition: active-slice-a
+    mergeMembers: [5, 41, 42]
+    rationale: Merged with inspection so only genuinely unverifiable assumptions require labels.
+  - number: 43
+    alias: RULE_ROOT_CAUSE
+    destination: debugging.root-cause-discipline
+    disposition: later-slice
+    mergeMembers: [43]
+    rationale: Preserved for the later debugging bundle rather than loading diagnosis policy universally.
+  - number: 44
+    alias: RULE_NO_OPPORTUNISTIC_REFACTOR
+    destination: core.minimal-change
+    disposition: active-slice-a
+    mergeMembers: [2, 44]
+    rationale: Merged with minimal change because both exclude unrelated work from the task diff.
+editorial:
+  - section: Priority Order
+    disposition: reviewed-editorial
+    rationale: Reviewed as conflict-resolution context but not imported as an atomic runtime rule.
+  - section: Core Principle
+    disposition: reviewed-editorial
+    rationale: Reviewed as an editorial summary already represented by atomic Core rules.
