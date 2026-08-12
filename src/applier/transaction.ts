@@ -30,6 +30,8 @@ interface TransactionEntry {
   readonly temporaryPath?: string
   readonly backupPath?: string
   readonly rollbackCandidatePath: string
+  readonly recoveryPath: string
+  readonly rollbackRecoveryPath: string
   readonly parentDevice: number
   readonly parentInode: number
   readonly parentPath: string
@@ -56,13 +58,6 @@ type StableOperation =
   | { readonly operation: 'remove'; readonly name: string }
   | { readonly operation: 'hash'; readonly name: string }
   | { readonly operation: 'stat'; readonly name: string }
-  | {
-    readonly operation: 'verify-remove'
-    readonly name: string
-    readonly expectedHash: string
-    readonly expectedDevice: number
-    readonly expectedInode: number
-  }
   | { readonly operation: 'remove-directory'; readonly name: string }
   | { readonly operation: 'mkdir-chain'; readonly segments: readonly string[] }
 
@@ -76,7 +71,6 @@ interface StableOperationResult {
   readonly hash?: string
   readonly fileDevice?: number
   readonly fileInode?: number
-  readonly verified?: boolean
   readonly createdDirectories?: readonly CreatedDirectory[]
   readonly finalParent?: StableParent
 }
@@ -137,16 +131,6 @@ try {
   } else if (command.operation === 'stat') {
     const metadata = await lstat(safeName(command.name))
     result = { fileDevice: metadata.dev, fileInode: metadata.ino }
-  } else if (command.operation === 'verify-remove') {
-    const name = safeName(command.name)
-    const metadata = await lstat(name)
-    const content = await readFile(name, 'utf8')
-    const hash = createHash('sha256').update(content, 'utf8').digest('hex')
-    const verified = metadata.dev === command.expectedDevice
-      && metadata.ino === command.expectedInode
-      && hash === command.expectedHash
-    if (verified) await rm(name)
-    result = { verified }
   } else if (command.operation === 'remove-directory') {
     await rmdir(safeName(command.name))
   } else if (command.operation === 'mkdir-chain') {
@@ -280,12 +264,13 @@ async function ensureParent(
     if (parent === cursor) break
     cursor = parent
   }
-  const existingMetadata = await lstat(cursor)
-  if (!existingMetadata.isDirectory() || existingMetadata.isSymbolicLink()) {
+  const existingRealPath = await realpath(cursor)
+  const existingMetadata = await lstat(existingRealPath)
+  if (!existingMetadata.isDirectory()) {
     throw new Error(`Unsafe existing transaction parent: ${cursor}`)
   }
   const existingParent: StableParent = {
-    path: await realpath(cursor),
+    path: existingRealPath,
     device: existingMetadata.dev,
     inode: existingMetadata.ino,
   }
@@ -321,6 +306,11 @@ async function initializeEntry(
     temporaryPath,
     backupPath,
     rollbackCandidatePath: join(parent, `.${base}.${suffix}.rollback`),
+    recoveryPath: join(parent, `.${base}.agent-policy-recovery-${transactionId}.original`),
+    rollbackRecoveryPath: join(
+      parent,
+      `.${base}.agent-policy-recovery-${transactionId}.replacement`,
+    ),
     parentDevice: stableParent.device,
     parentInode: stableParent.inode,
     parentPath: stableParent.path,
@@ -374,8 +364,9 @@ async function restoreBackupWithoutOverwrite(
     to: entryName(entry, entry.operation.targetPath),
   })
   await runStableOperation(entryParent(entry), {
-    operation: 'remove',
-    name: entryName(entry, entry.backupPath),
+    operation: 'rename',
+    from: entryName(entry, entry.backupPath),
+    to: entryName(entry, entry.recoveryPath),
   })
 }
 
@@ -538,19 +529,14 @@ export async function applyTransaction(
       if (entry.backupPath === undefined) continue
       try {
         await assertMutationPath(repositoryRoot, entry)
-        if (entry.backupDevice === undefined || entry.backupInode === undefined) {
-          throw new Error('Backup identity was not recorded')
-        }
-        const removed = await runStableOperation(entryParent(entry), {
-          operation: 'verify-remove',
-          name: entryName(entry, entry.backupPath),
-          expectedHash: entry.operation.expectedCurrentSha256 ?? '',
-          expectedDevice: entry.backupDevice,
-          expectedInode: entry.backupInode,
+        await runStableOperation(entryParent(entry), {
+          operation: 'rename',
+          from: entryName(entry, entry.backupPath),
+          to: entryName(entry, entry.recoveryPath),
         })
-        if (removed.verified !== true) {
-          throw new Error('backup changed before cleanup; preserved for recovery')
-        }
+        cleanupWarnings.push(
+          `RECOVERY SNAPSHOT PRESERVED for ${entry.operation.relativePath} at ${entry.recoveryPath}`,
+        )
       } catch (cleanupError) {
         cleanupWarnings.push(
           `BACKUP CLEANUP FAILED for ${entry.operation.relativePath}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
@@ -569,31 +555,38 @@ export async function applyTransaction(
             from: entryName(entry, entry.operation.targetPath),
             to: entryName(entry, entry.rollbackCandidatePath),
           })
-          if (entry.installedDevice === undefined || entry.installedInode === undefined) {
-            throw new Error('Installed identity was not recorded')
-          }
-          const removed = await runStableOperation(entryParent(entry), {
-            operation: 'verify-remove',
+          const installed = await runStableOperation(entryParent(entry), {
+            operation: 'hash',
             name: entryName(entry, entry.rollbackCandidatePath),
-            expectedHash: sha256Utf8(entry.operation.content ?? ''),
-            expectedDevice: entry.installedDevice,
-            expectedInode: entry.installedInode,
           })
-          if (removed.verified !== true) {
+          const installedIdentity = await runStableOperation(entryParent(entry), {
+            operation: 'stat',
+            name: entryName(entry, entry.rollbackCandidatePath),
+          })
+          const rollbackConflict = installed.hash !== sha256Utf8(entry.operation.content ?? '')
+            || installedIdentity.fileDevice !== entry.installedDevice
+            || installedIdentity.fileInode !== entry.installedInode
+          if (rollbackConflict) {
             await runStableOperation(entryParent(entry), {
               operation: 'link',
               from: entryName(entry, entry.rollbackCandidatePath),
               to: entryName(entry, entry.operation.targetPath),
             })
             await runStableOperation(entryParent(entry), {
-              operation: 'remove',
-              name: entryName(entry, entry.rollbackCandidatePath),
+              operation: 'rename',
+              from: entryName(entry, entry.rollbackCandidatePath),
+              to: entryName(entry, entry.rollbackRecoveryPath),
             })
             entry.rollbackConflict = true
             rollbackFailures.push(
               `${entry.operation.relativePath}: installed target changed during rollback; current target preserved`,
             )
           } else {
+            await runStableOperation(entryParent(entry), {
+              operation: 'rename',
+              from: entryName(entry, entry.rollbackCandidatePath),
+              to: entryName(entry, entry.rollbackRecoveryPath),
+            })
             entry.installed = false
           }
           entry.installed = false

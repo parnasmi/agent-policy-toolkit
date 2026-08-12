@@ -103,7 +103,7 @@ describe('transactional plan application', () => {
 
     const result = await applyPlan(reviewed, { repositoryRoot: root, toolkitVersion })
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       ok: true,
       appliedPaths: [
         '.agents/skills/react/SKILL.md',
@@ -112,6 +112,15 @@ describe('transactional plan application', () => {
         '.agents/skills/old/SKILL.md',
       ],
     })
+    if (!result.ok) throw new Error('expected successful application')
+    expect(result.warnings).toHaveLength(3)
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/RECOVERY SNAPSHOT PRESERVED.*testing/i),
+        expect.stringMatching(/RECOVERY SNAPSHOT PRESERVED.*AGENTS\.md/i),
+        expect.stringMatching(/RECOVERY SNAPSHOT PRESERVED.*old/i),
+      ]),
+    )
     expect(await readFile(join(root, '.agents/skills/react/SKILL.md'), 'utf8')).toBe(
       generated('react\n'),
     )
@@ -154,10 +163,10 @@ describe('transactional plan application', () => {
     expect(result).toMatchObject({ ok: true })
     if (!result.ok) throw new Error('expected successful application with cleanup warning')
     expect(result.warnings).toEqual([
-      expect.stringMatching(/BACKUP CLEANUP FAILED.*owned\.md.*preserved/i),
+      expect.stringMatching(/RECOVERY SNAPSHOT PRESERVED.*owned\.md/i),
     ])
     expect(await readFile(join(root, 'owned.md'), 'utf8')).toBe(desired)
-    const backup = (await readdir(root)).find((name) => name.endsWith('.backup'))
+    const backup = (await readdir(root)).find((name) => name.endsWith('.original'))
     if (backup === undefined) throw new Error('expected preserved backup')
     expect(await readFile(join(root, backup), 'utf8')).toBe(generated('open descriptor edit\n'))
   })
@@ -364,7 +373,7 @@ describe('transactional plan application', () => {
     expect((await readdir(root)).some((name) => name.includes('.backup'))).toBe(true)
   })
 
-  it('removes shared created parent directories deepest-first after rollback', async () => {
+  it('removes transaction debris while retaining explicit recovery snapshots after rollback', async () => {
     const { parent, root } = await sandbox()
     const reviewed = await plan(parent, root, [
       artifact('nested/a/first.md', generated('first\n')),
@@ -387,7 +396,10 @@ describe('transactional plan application', () => {
       code: 'transaction-failed',
       rollbackFailures: [],
     })
-    await expectMissing(join(root, 'nested'))
+    await expectNoTransactionDebris(join(root, 'nested/a'))
+    await expectMissing(join(root, 'nested/b'))
+    expect((await readdir(join(root, 'nested/a'))).some((name) =>
+      name.includes('.agent-policy-recovery-'))).toBe(true)
   })
 
   it('does not overwrite a target created at the mutation boundary', async () => {
@@ -537,6 +549,20 @@ describe('transactional plan application', () => {
 
     expect(result).toMatchObject({ ok: true })
     expect(await readFile(join(root, 'actual/sub/new.md'), 'utf8')).toBe(generated('new\n'))
+  })
+
+  it('creates missing descendants safely beneath a confined symlink ancestor', async () => {
+    const { parent, root } = await sandbox()
+    await mkdir(join(root, 'actual'))
+    await symlink(join(root, 'actual'), join(root, 'linked'))
+    const reviewed = await plan(parent, root, [
+      artifact('linked/new/sub/file.md', generated('new\n')),
+    ])
+
+    const result = await applyPlan(reviewed, { repositoryRoot: root, toolkitVersion })
+
+    expect(result).toMatchObject({ ok: true })
+    expect(await readFile(join(root, 'actual/new/sub/file.md'), 'utf8')).toBe(generated('new\n'))
   })
 
   it('rolls back safely beneath a confined in-repository symlink ancestor', async () => {
