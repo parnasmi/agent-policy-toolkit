@@ -75,7 +75,7 @@ describe('planner integrity primitives', () => {
 
   it('serializes schema fields canonically and binds the hash to the document without planHash', () => {
     const first = {
-      schemaVersion: '1',
+      schemaVersion: '2',
       command: 'update',
       toolkitVersion: '0.1.0-alpha.0',
       repositoryRootFingerprint: 'root',

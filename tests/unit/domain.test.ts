@@ -26,7 +26,7 @@ const artifact = {
 } satisfies VirtualArtifact
 
 const changePlan = {
-  schemaVersion: '1',
+  schemaVersion: '2',
   command: 'init',
   toolkitVersion: '0.1.0-alpha.0',
   repositoryRootFingerprint: 'root-fingerprint',

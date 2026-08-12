@@ -200,7 +200,7 @@ export async function createChangePlan(request: PlanRequest): Promise<ChangePlan
     }
 
     const partialPlan = {
-      schemaVersion: '1',
+      schemaVersion: '2',
       command: request.command,
       toolkitVersion: request.toolkitVersion,
       repositoryRootFingerprint: sha256Utf8(repositoryRoot),

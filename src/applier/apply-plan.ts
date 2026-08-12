@@ -39,7 +39,15 @@ export async function applyPlan(
   if ('ok' in validated) return validated
 
   try {
-    const warnings = await applyTransaction(validated.operations, options.transactionHooks)
+    const warnings = await applyTransaction(
+      validated.repositoryRoot,
+      validated.operations,
+      options.transactionHooks,
+      async () => {
+        const immediatelyCurrent = await revalidatePreconditions(plan, options)
+        if ('ok' in immediatelyCurrent) throw new Error(immediatelyCurrent.message)
+      },
+    )
     return {
       ok: true,
       appliedPaths: validated.operations.map(({ relativePath }) => relativePath),

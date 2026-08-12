@@ -147,6 +147,26 @@ describe('transactional plan application', () => {
     await expectMissing(join(root, 'new.md'))
   })
 
+  it('revalidates every precondition again after preparing sibling temporaries', async () => {
+    const { parent, root } = await sandbox()
+    const reviewed = await plan(parent, root, [artifact('new.md', generated('new\n'))])
+    const hooks: TransactionHooks = {
+      beforePrepare: async () => {
+        await writeFile(join(root, '.agent-policy/policy.yaml'), 'changed during preparation\n')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    await expectMissing(join(root, 'new.md'))
+    await expectNoTransactionDebris(root)
+  })
+
   it('rejects a changed generated artifact before writing another target', async () => {
     const { parent, root } = await sandbox()
     const previous = generated('old\n')
@@ -208,6 +228,45 @@ describe('transactional plan application', () => {
     await expectMissing(join(root, 'nested/b-new.md'))
     await expectMissing(join(root, 'nested'))
     await expectNoTransactionDebris(root)
+  })
+
+  it('does not overwrite a target created at the mutation boundary', async () => {
+    const { parent, root } = await sandbox()
+    const reviewed = await plan(parent, root, [artifact('new.md', generated('reviewed\n'))])
+    const hooks: TransactionHooks = {
+      beforeRename: async ({ phase }) => {
+        if (phase === 'install') await writeFile(join(root, 'new.md'), 'concurrent user data\n')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    expect(await readFile(join(root, 'new.md'), 'utf8')).toBe('concurrent user data\n')
+  })
+
+  it('restores an existing target edited at the mutation boundary', async () => {
+    const { parent, root } = await sandbox()
+    await writeFile(join(root, 'owned.md'), generated('old\n'))
+    const reviewed = await plan(parent, root, [artifact('owned.md', generated('reviewed\n'))])
+    const hooks: TransactionHooks = {
+      beforeRename: async ({ phase }) => {
+        if (phase === 'backup') await writeFile(join(root, 'owned.md'), generated('concurrent\n'))
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    expect(await readFile(join(root, 'owned.md'), 'utf8')).toBe(generated('concurrent\n'))
   })
 
   it('rejects a plan whose canonical hash is invalid', async () => {
@@ -306,6 +365,68 @@ describe('transactional plan application', () => {
     await expectMissing(join(outside, 'new.md'))
   })
 
+  it('revalidates confinement immediately before preparing a sibling temporary', async () => {
+    const { parent, root } = await sandbox()
+    const outside = join(parent, 'outside')
+    const movedSafe = join(parent, 'moved-safe')
+    await mkdir(join(root, 'safe'))
+    await mkdir(outside)
+    const reviewed = await plan(parent, root, [artifact('safe/new.md', generated('new\n'))])
+    const hooks: TransactionHooks = {
+      beforePrepare: async () => {
+        const { rename } = await import('node:fs/promises')
+        await rename(join(root, 'safe'), movedSafe)
+        await symlink(outside, join(root, 'safe'))
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    expect(await readdir(outside)).toEqual([])
+  })
+
+  it('revalidates confinement at the mutation boundary after a parent symlink swap', async () => {
+    const { parent, root } = await sandbox()
+    const outside = join(parent, 'outside')
+    const movedSafe = join(parent, 'moved-safe')
+    await mkdir(join(root, 'safe'))
+    await mkdir(outside)
+    await writeFile(join(root, 'safe/owned.md'), generated('old\n'))
+    const reviewed = await plan(parent, root, [
+      artifact('safe/owned.md', generated('reviewed\n')),
+    ])
+    let outsideTrapPath = ''
+    const hooks: TransactionHooks = {
+      beforeRename: async ({ phase }) => {
+        if (phase !== 'backup') return
+        const preparedName = (await readdir(join(root, 'safe')))
+          .find((name) => name.includes('.agent-policy-transaction-'))
+        if (preparedName === undefined) throw new Error('expected prepared sibling')
+        const { rename } = await import('node:fs/promises')
+        await rename(join(root, 'safe'), movedSafe)
+        await symlink(outside, join(root, 'safe'))
+        outsideTrapPath = join(outside, preparedName)
+        await writeFile(outsideTrapPath, 'outside trap\n')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    await expectMissing(join(outside, 'owned.md'))
+    expect(await readFile(outsideTrapPath, 'utf8')).toBe('outside trap\n')
+    expect(await readFile(join(movedSafe, 'owned.md'), 'utf8')).toBe(generated('old\n'))
+  })
+
   it('reports rollback failures prominently with the affected path', async () => {
     const { parent, root } = await sandbox()
     const previous = generated('old\n')
@@ -331,6 +452,22 @@ describe('transactional plan application', () => {
       expect.stringMatching(/owned\.md.*simulated rollback failure/i),
     ])
     expect((await readdir(root)).some((name) => name.includes('.backup'))).toBe(true)
+  })
+
+  it('rejects a prior schema-1 plan explicitly before canonical hash processing', async () => {
+    const { parent, root } = await sandbox()
+    const reviewed = await plan(parent, root, [artifact('new.md', generated('new\n'))])
+    const { currentManagedRegionHashes: _newField, ...priorFields } = reviewed
+    const priorPlan = { ...priorFields, schemaVersion: '1' } as ChangePlan
+
+    const result = await applyPlan(priorPlan, { repositoryRoot: root, toolkitVersion })
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'invalid-plan',
+      message: expect.stringMatching(/unsupported.*schema 1/i),
+    })
+    await expectMissing(join(root, 'new.md'))
   })
 })
 

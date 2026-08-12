@@ -1,8 +1,19 @@
 import { randomUUID } from 'node:crypto'
-import { lstat, mkdir, open, rename, rm, rmdir } from 'node:fs/promises'
+import {
+  link,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  rm,
+  rmdir,
+} from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 
 import type { PreparedOperation } from './preconditions.js'
+import { sha256Utf8 } from '../planner/hash.js'
+import { resolveConfinedPath } from '../planner/inspect.js'
 
 export type RenamePhase = 'backup' | 'install' | 'restore'
 
@@ -15,6 +26,7 @@ export interface TransactionRenameEvent {
 }
 
 export interface TransactionHooks {
+  readonly beforePrepare?: (path: string) => void | Promise<void>
   readonly beforeRename?: (event: TransactionRenameEvent) => void | Promise<void>
 }
 
@@ -22,6 +34,8 @@ interface TransactionEntry {
   readonly operation: PreparedOperation
   readonly temporaryPath?: string
   readonly backupPath?: string
+  readonly parentDevice: number
+  readonly parentInode: number
   backupCreated: boolean
   installed: boolean
 }
@@ -91,13 +105,49 @@ async function initializeEntry(
   const backupPath = operation.existed
     ? join(parent, `.${base}.${suffix}.backup`)
     : undefined
+  const parentMetadata = await lstat(parent)
+  if (!parentMetadata.isDirectory() || parentMetadata.isSymbolicLink()) {
+    throw new Error(`Unsafe transaction parent for ${operation.relativePath}`)
+  }
   return {
     operation,
     temporaryPath,
     backupPath,
+    parentDevice: parentMetadata.dev,
+    parentInode: parentMetadata.ino,
     backupCreated: false,
     installed: false,
   }
+}
+
+async function assertMutationPath(
+  repositoryRoot: string,
+  entry: TransactionEntry,
+): Promise<void> {
+  const resolved = await resolveConfinedPath(
+    repositoryRoot,
+    entry.operation.relativePath,
+  )
+  if (resolved.path !== entry.operation.targetPath) {
+    throw new Error(`Transaction target changed for ${entry.operation.relativePath}`)
+  }
+  const parentMetadata = await lstat(dirname(entry.operation.targetPath))
+  if (
+    !parentMetadata.isDirectory()
+    || parentMetadata.isSymbolicLink()
+    || parentMetadata.dev !== entry.parentDevice
+    || parentMetadata.ino !== entry.parentInode
+  ) {
+    throw new Error(`Transaction parent changed for ${entry.operation.relativePath}`)
+  }
+}
+
+async function restoreBackupWithoutOverwrite(
+  entry: TransactionEntry,
+): Promise<void> {
+  if (entry.backupPath === undefined) return
+  await link(entry.backupPath, entry.operation.targetPath)
+  await rm(entry.backupPath)
 }
 
 async function prepareTemporary(entry: TransactionEntry): Promise<void> {
@@ -144,18 +194,24 @@ async function cleanEmptyDirectories(paths: readonly string[]): Promise<void> {
 
 /** Replace a complete operation set, restoring backups in reverse order on any failure. */
 export async function applyTransaction(
+  repositoryRoot: string,
   operations: readonly PreparedOperation[],
   hooks?: TransactionHooks,
+  beforeCommit?: () => void | Promise<void>,
 ): Promise<readonly string[]> {
   const transactionId = randomUUID()
   const entries: TransactionEntry[] = []
   const createdDirectories: string[] = []
   try {
     for (const operation of operations) {
+      await hooks?.beforePrepare?.(operation.relativePath)
+      await resolveConfinedPath(repositoryRoot, operation.relativePath)
       const entry = await initializeEntry(operation, transactionId, createdDirectories)
       entries.push(entry)
+      await assertMutationPath(repositoryRoot, entry)
       await prepareTemporary(entry)
     }
+    await beforeCommit?.()
 
     for (const [index, entry] of entries.entries()) {
       if (entry.backupPath !== undefined) {
@@ -167,8 +223,14 @@ export async function applyTransaction(
           entry.operation.targetPath,
           entry.backupPath,
         )
+        await assertMutationPath(repositoryRoot, entry)
         await rename(entry.operation.targetPath, entry.backupPath)
         entry.backupCreated = true
+        await assertMutationPath(repositoryRoot, entry)
+        const backedUp = await readFile(entry.backupPath, 'utf8')
+        if (sha256Utf8(backedUp) !== entry.operation.expectedCurrentSha256) {
+          throw new Error(`Artifact changed at mutation boundary: ${entry.operation.relativePath}`)
+        }
       }
       if (entry.temporaryPath !== undefined) {
         await invokeRenameHook(
@@ -179,8 +241,11 @@ export async function applyTransaction(
           entry.temporaryPath,
           entry.operation.targetPath,
         )
-        await rename(entry.temporaryPath, entry.operation.targetPath)
+        await assertMutationPath(repositoryRoot, entry)
+        await link(entry.temporaryPath, entry.operation.targetPath)
         entry.installed = true
+        await assertMutationPath(repositoryRoot, entry)
+        await rm(entry.temporaryPath)
       }
     }
 
@@ -188,6 +253,7 @@ export async function applyTransaction(
     for (const entry of entries) {
       if (entry.backupPath === undefined) continue
       try {
+        await assertMutationPath(repositoryRoot, entry)
         await rm(entry.backupPath, { force: true })
       } catch (cleanupError) {
         cleanupWarnings.push(
@@ -201,6 +267,7 @@ export async function applyTransaction(
     for (const [index, entry] of [...entries.entries()].reverse()) {
       if (entry.installed) {
         try {
+          await assertMutationPath(repositoryRoot, entry)
           await rm(entry.operation.targetPath, { force: true })
           entry.installed = false
         } catch (rollbackError) {
@@ -219,7 +286,8 @@ export async function applyTransaction(
             entry.backupPath,
             entry.operation.targetPath,
           )
-          await rename(entry.backupPath, entry.operation.targetPath)
+          await assertMutationPath(repositoryRoot, entry)
+          await restoreBackupWithoutOverwrite(entry)
           entry.backupCreated = false
         } catch (rollbackError) {
           rollbackFailures.push(
@@ -231,6 +299,7 @@ export async function applyTransaction(
     for (const entry of entries) {
       if (entry.temporaryPath === undefined) continue
       try {
+        await assertMutationPath(repositoryRoot, entry)
         await rm(entry.temporaryPath, { force: true })
       } catch (rollbackError) {
         rollbackFailures.push(

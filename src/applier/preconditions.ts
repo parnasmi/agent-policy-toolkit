@@ -33,6 +33,7 @@ export interface PreparedOperation {
   readonly targetPath: string
   readonly content?: string
   readonly existed: boolean
+  readonly expectedCurrentSha256?: string
 }
 
 export interface ValidatedApplication {
@@ -90,7 +91,7 @@ function hasExactManagedRegionOwnership(content: string, owner: string): boolean
 }
 
 function validatePlanShape(plan: ChangePlan): ApplyFailure | undefined {
-  if (plan.schemaVersion !== '1') {
+  if (plan.schemaVersion !== '2') {
     return failure('invalid-plan', `Unsupported Change Plan schema ${plan.schemaVersion}`)
   }
   if (computePlanHash(plan) !== plan.planHash) {
@@ -276,6 +277,7 @@ export async function revalidatePreconditions(
       targetPath,
       content: artifact.content,
       existed: true,
+      expectedCurrentSha256: expectedHash,
     })
   }
 
@@ -288,7 +290,12 @@ export async function revalidatePreconditions(
     if (!hasExactGeneratedOwnership(current, toolkitOwner)) {
       return failure('ownership-drift', `Refusing to remove an unowned artifact: ${path}`, [path])
     }
-    operations.push({ relativePath: path, targetPath, existed: true })
+    operations.push({
+      relativePath: path,
+      targetPath,
+      existed: true,
+      expectedCurrentSha256: plan.currentArtifactHashes[path],
+    })
   }
 
   return { repositoryRoot, operations }
