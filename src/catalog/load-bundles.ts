@@ -174,7 +174,7 @@ function validateDependencies(bundles: ReadonlyMap<string, Bundle>, paths: Reado
   for (const id of bundles.keys()) visit(id)
 }
 
-/** Load the shipped bundle metadata and deterministically validate activation fixture structure, not semantic model activation. */
+/** Load and validate the shipped bundle manifests; activation fixtures use the separate validator. */
 export async function loadBundles(toolkitRoot = defaultToolkitRoot): Promise<ReadonlyMap<string, Bundle>> {
   const root = resolve(toolkitRoot)
   const bundlesDirectory = await confinedFile(root, resolve(root, 'catalog/bundles'))
