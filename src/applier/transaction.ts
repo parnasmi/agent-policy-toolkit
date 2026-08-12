@@ -359,14 +359,9 @@ async function restoreBackupWithoutOverwrite(
 ): Promise<void> {
   if (entry.backupPath === undefined) return
   await runStableOperation(entryParent(entry), {
-    operation: 'link',
-    from: entryName(entry, entry.backupPath),
-    to: entryName(entry, entry.operation.targetPath),
-  })
-  await runStableOperation(entryParent(entry), {
     operation: 'rename',
     from: entryName(entry, entry.backupPath),
-    to: entryName(entry, entry.recoveryPath),
+    to: entryName(entry, entry.operation.targetPath),
   })
 }
 
@@ -480,6 +475,12 @@ export async function applyTransaction(
           name: entryName(entry, entry.backupPath),
         })
         if (backedUp.hash !== entry.operation.expectedCurrentSha256) {
+          await runStableOperation(entryParent(entry), {
+            operation: 'rename',
+            from: entryName(entry, entry.backupPath),
+            to: entryName(entry, entry.operation.targetPath),
+          })
+          entry.backupCreated = false
           throw new Error(`Artifact changed at mutation boundary: ${entry.operation.relativePath}`)
         }
         const backupIdentity = await runStableOperation(entryParent(entry), {
@@ -504,6 +505,13 @@ export async function applyTransaction(
           path: entry.operation.relativePath,
         })
         await beforeMutation?.()
+        const prepared = await runStableOperation(entryParent(entry), {
+          operation: 'hash',
+          name: entryName(entry, entry.temporaryPath),
+        })
+        if (prepared.hash !== sha256Utf8(entry.operation.content ?? '')) {
+          throw new Error(`Prepared artifact changed before install: ${entry.operation.relativePath}`)
+        }
         await runStableOperation(entryParent(entry), {
           operation: 'link',
           from: entryName(entry, entry.temporaryPath),
@@ -516,6 +524,13 @@ export async function applyTransaction(
         })
         entry.installedDevice = installedIdentity.fileDevice
         entry.installedInode = installedIdentity.fileInode
+        const installed = await runStableOperation(entryParent(entry), {
+          operation: 'hash',
+          name: entryName(entry, entry.operation.targetPath),
+        })
+        if (installed.hash !== sha256Utf8(entry.operation.content ?? '')) {
+          throw new Error(`Installed artifact hash mismatch: ${entry.operation.relativePath}`)
+        }
         await assertMutationPath(repositoryRoot, entry)
         await runStableOperation(entryParent(entry), {
           operation: 'remove',
@@ -529,14 +544,25 @@ export async function applyTransaction(
       if (entry.backupPath === undefined) continue
       try {
         await assertMutationPath(repositoryRoot, entry)
-        await runStableOperation(entryParent(entry), {
-          operation: 'rename',
-          from: entryName(entry, entry.backupPath),
-          to: entryName(entry, entry.recoveryPath),
+        const backupHash = await runStableOperation(entryParent(entry), {
+          operation: 'hash',
+          name: entryName(entry, entry.backupPath),
         })
-        cleanupWarnings.push(
-          `RECOVERY SNAPSHOT PRESERVED for ${entry.operation.relativePath} at ${entry.recoveryPath}`,
-        )
+        const backupIdentity = await runStableOperation(entryParent(entry), {
+          operation: 'stat',
+          name: entryName(entry, entry.backupPath),
+        })
+        if (
+          backupHash.hash !== entry.operation.expectedCurrentSha256
+          || backupIdentity.fileDevice !== entry.backupDevice
+          || backupIdentity.fileInode !== entry.backupInode
+        ) {
+          throw new Error(`backup changed; preserved at ${entry.backupPath}`)
+        }
+        await runStableOperation(entryParent(entry), {
+          operation: 'remove',
+          name: entryName(entry, entry.backupPath),
+        })
       } catch (cleanupError) {
         cleanupWarnings.push(
           `BACKUP CLEANUP FAILED for ${entry.operation.relativePath}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
@@ -550,6 +576,30 @@ export async function applyTransaction(
       if (entry.installed) {
         try {
           await assertMutationPath(repositoryRoot, entry)
+          const visibleIdentity = await runStableOperation(entryParent(entry), {
+            operation: 'stat',
+            name: entryName(entry, entry.operation.targetPath),
+          })
+          const visibleHash = await runStableOperation(entryParent(entry), {
+            operation: 'hash',
+            name: entryName(entry, entry.operation.targetPath),
+          })
+          if (
+            visibleHash.hash !== sha256Utf8(entry.operation.content ?? '')
+            || visibleIdentity.fileDevice !== entry.installedDevice
+            || visibleIdentity.fileInode !== entry.installedInode
+          ) {
+            entry.rollbackConflict = true
+            rollbackFailures.push(
+              `${entry.operation.relativePath}: concurrent target preserved visibly during rollback`,
+            )
+            if (entry.backupCreated && entry.backupPath !== undefined) {
+              rollbackFailures.push(
+                `${entry.operation.relativePath}: original backup preserved at ${entry.backupPath}`,
+              )
+            }
+            continue
+          }
           await runStableOperation(entryParent(entry), {
             operation: 'rename',
             from: entryName(entry, entry.operation.targetPath),
@@ -583,9 +633,8 @@ export async function applyTransaction(
             )
           } else {
             await runStableOperation(entryParent(entry), {
-              operation: 'rename',
-              from: entryName(entry, entry.rollbackCandidatePath),
-              to: entryName(entry, entry.rollbackRecoveryPath),
+              operation: 'remove',
+              name: entryName(entry, entry.rollbackCandidatePath),
             })
             entry.installed = false
           }
@@ -593,7 +642,7 @@ export async function applyTransaction(
         } catch (rollbackError) {
           entry.rollbackConflict = true
           rollbackFailures.push(
-            `${entry.operation.relativePath}: cannot safely remove partial replacement: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+            `${entry.operation.relativePath}: concurrent target preserved visibly; ownership check failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
           )
         }
       }
@@ -612,6 +661,21 @@ export async function applyTransaction(
             entry.operation.targetPath,
           )
           await assertMutationPath(repositoryRoot, entry)
+          const backupHash = await runStableOperation(entryParent(entry), {
+            operation: 'hash',
+            name: entryName(entry, entry.backupPath),
+          })
+          const backupIdentity = await runStableOperation(entryParent(entry), {
+            operation: 'stat',
+            name: entryName(entry, entry.backupPath),
+          })
+          if (
+            backupHash.hash !== entry.operation.expectedCurrentSha256
+            || backupIdentity.fileDevice !== entry.backupDevice
+            || backupIdentity.fileInode !== entry.backupInode
+          ) {
+            throw new Error(`original backup identity changed; preserved at ${entry.backupPath}`)
+          }
           await restoreBackupWithoutOverwrite(entry)
           entry.backupCreated = false
         } catch (rollbackError) {

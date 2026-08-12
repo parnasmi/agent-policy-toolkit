@@ -126,7 +126,7 @@ function hasExactManagedRegionOwnership(content: string, owner: string): boolean
 }
 
 function validatePlanShape(plan: ChangePlan): ApplyFailure | undefined {
-  if (plan.schemaVersion !== '2') {
+  if (plan.schemaVersion !== '1') {
     return failure('invalid-plan', `Unsupported Change Plan schema ${plan.schemaVersion}`)
   }
   if (computePlanHash(plan) !== plan.planHash) {
@@ -139,7 +139,7 @@ function validatePlanShape(plan: ChangePlan): ApplyFailure | undefined {
     ...Object.keys(plan.sourceHashes),
     ...allTargets,
     ...Object.keys(plan.currentArtifactHashes),
-    ...Object.keys(plan.currentManagedRegionHashes),
+    ...Object.keys(plan.currentManagedRegionHashes ?? {}),
   ]
   for (const path of allPaths) {
     if (normalizeArtifactPath(path) !== path) {
@@ -192,7 +192,7 @@ function validatePlanShape(plan: ChangePlan): ApplyFailure | undefined {
       .filter(({ operation }) => operation === 'managed-region')
       .map(({ path }) => path),
   )
-  if (exactKeys(plan.currentManagedRegionHashes).some((path) => !managedPaths.has(path))) {
+  if (exactKeys(plan.currentManagedRegionHashes ?? {}).some((path) => !managedPaths.has(path))) {
     return failure('invalid-plan', 'Change Plan contains an extraneous Managed Region precondition')
   }
   return undefined
@@ -208,7 +208,7 @@ async function resolveEveryPath(
     ...plan.desiredArtifacts.map(({ path }) => path),
     ...plan.removals,
     ...Object.keys(plan.currentArtifactHashes),
-    ...Object.keys(plan.currentManagedRegionHashes),
+    ...Object.keys(plan.currentManagedRegionHashes ?? {}),
   ]
   try {
     for (const path of paths) {
@@ -294,7 +294,7 @@ export async function revalidatePreconditions(
 
     const ownership = await inspectArtifact(repositoryRoot, artifact)
     if (artifact.operation === 'managed-region') {
-      const expectedRegionHash = plan.currentManagedRegionHashes[artifact.path]
+      const expectedRegionHash = plan.currentManagedRegionHashes?.[artifact.path]
       if (expectedRegionHash === undefined) {
         if (ownership.state !== 'unmanaged') {
           return failure('ownership-drift', `Managed Region ownership changed: ${artifact.path}`, [artifact.path])

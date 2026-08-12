@@ -45,7 +45,9 @@ function canonicalDocument(plan: SerializableChangePlan, includeHash: boolean): 
     repositoryRootFingerprint: plan.repositoryRootFingerprint,
     sourceHashes: sortedRecord(plan.sourceHashes),
     currentArtifactHashes: sortedRecord(plan.currentArtifactHashes),
-    currentManagedRegionHashes: sortedRecord(plan.currentManagedRegionHashes),
+    ...(plan.currentManagedRegionHashes === undefined
+      ? {}
+      : { currentManagedRegionHashes: sortedRecord(plan.currentManagedRegionHashes) }),
     desiredArtifacts: [...plan.desiredArtifacts]
       .map(canonicalArtifact)
       .sort((left, right) => compareStrings(left.path, right.path)),

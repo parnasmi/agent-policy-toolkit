@@ -113,14 +113,7 @@ describe('transactional plan application', () => {
       ],
     })
     if (!result.ok) throw new Error('expected successful application')
-    expect(result.warnings).toHaveLength(3)
-    expect(result.warnings).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/RECOVERY SNAPSHOT PRESERVED.*testing/i),
-        expect.stringMatching(/RECOVERY SNAPSHOT PRESERVED.*AGENTS\.md/i),
-        expect.stringMatching(/RECOVERY SNAPSHOT PRESERVED.*old/i),
-      ]),
-    )
+    expect(result.warnings).toBeUndefined()
     expect(await readFile(join(root, '.agents/skills/react/SKILL.md'), 'utf8')).toBe(
       generated('react\n'),
     )
@@ -163,10 +156,10 @@ describe('transactional plan application', () => {
     expect(result).toMatchObject({ ok: true })
     if (!result.ok) throw new Error('expected successful application with cleanup warning')
     expect(result.warnings).toEqual([
-      expect.stringMatching(/RECOVERY SNAPSHOT PRESERVED.*owned\.md/i),
+      expect.stringMatching(/BACKUP CLEANUP FAILED.*owned\.md.*preserved/i),
     ])
     expect(await readFile(join(root, 'owned.md'), 'utf8')).toBe(desired)
-    const backup = (await readdir(root)).find((name) => name.endsWith('.original'))
+    const backup = (await readdir(root)).find((name) => name.endsWith('.backup'))
     if (backup === undefined) throw new Error('expected preserved backup')
     expect(await readFile(join(root, backup), 'utf8')).toBe(generated('open descriptor edit\n'))
   })
@@ -331,7 +324,7 @@ describe('transactional plan application', () => {
     if (result.ok) throw new Error('expected transaction failure')
     expect(result.message).toMatch(/ROLLBACK FAILED/i)
     expect(result.rollbackFailures).toEqual([
-      expect.stringMatching(/a-owned\.md.*changed during rollback/i),
+      expect.stringMatching(/a-owned\.md.*concurrent target preserved visibly/i),
       expect.stringMatching(/a-owned\.md.*backup.*preserved/i),
     ])
     expect(await readFile(join(root, 'a-owned.md'), 'utf8')).toBe(generated('concurrent\n'))
@@ -366,14 +359,50 @@ describe('transactional plan application', () => {
     expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
     if (result.ok) throw new Error('expected transaction failure')
     expect(result.rollbackFailures).toEqual([
-      expect.stringMatching(/a-owned\.md.*changed during rollback/i),
+      expect.stringMatching(/a-owned\.md.*concurrent target preserved visibly/i),
       expect.stringMatching(/a-owned\.md.*backup.*preserved/i),
     ])
     expect(await readFile(join(root, 'a-owned.md'), 'utf8')).toBe(reviewedContent)
     expect((await readdir(root)).some((name) => name.includes('.backup'))).toBe(true)
   })
 
-  it('removes transaction debris while retaining explicit recovery snapshots after rollback', async () => {
+  it('does not hide a concurrent directory replacement before rollback ownership checks', async () => {
+    const { parent, root } = await sandbox()
+    await writeFile(join(root, 'a-owned.md'), generated('old\n'))
+    const reviewed = await plan(parent, root, [
+      artifact('a-owned.md', generated('reviewed\n')),
+      artifact('b-new.md', generated('created\n')),
+    ])
+    const hooks: TransactionHooks = {
+      beforeRename: async ({ phase, operationIndex }) => {
+        if (phase !== 'install' || operationIndex !== 1) return
+        const { rm } = await import('node:fs/promises')
+        await rm(join(root, 'a-owned.md'))
+        await mkdir(join(root, 'a-owned.md'))
+        await writeFile(join(root, 'a-owned.md/concurrent.txt'), 'visible concurrent work\n')
+        throw new Error('stop after directory replacement')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    if (result.ok) throw new Error('expected transaction failure')
+    expect(result.message).toMatch(/ROLLBACK FAILED/i)
+    expect(await readFile(join(root, 'a-owned.md/concurrent.txt'), 'utf8')).toBe(
+      'visible concurrent work\n',
+    )
+    expect(result.rollbackFailures).toEqual([
+      expect.stringMatching(/a-owned\.md.*concurrent.*preserved/i),
+      expect.stringMatching(/a-owned\.md.*backup.*preserved/i),
+    ])
+  })
+
+  it('restores a clean pre-transaction tree after ordinary rollback', async () => {
     const { parent, root } = await sandbox()
     const reviewed = await plan(parent, root, [
       artifact('nested/a/first.md', generated('first\n')),
@@ -396,10 +425,7 @@ describe('transactional plan application', () => {
       code: 'transaction-failed',
       rollbackFailures: [],
     })
-    await expectNoTransactionDebris(join(root, 'nested/a'))
-    await expectMissing(join(root, 'nested/b'))
-    expect((await readdir(join(root, 'nested/a'))).some((name) =>
-      name.includes('.agent-policy-recovery-'))).toBe(true)
+    await expectMissing(join(root, 'nested'))
   })
 
   it('does not overwrite a target created at the mutation boundary', async () => {
@@ -419,6 +445,25 @@ describe('transactional plan application', () => {
 
     expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
     expect(await readFile(join(root, 'new.md'), 'utf8')).toBe('concurrent user data\n')
+  })
+
+  it('rejects a prepared temporary tampered immediately before installation', async () => {
+    const { parent, root } = await sandbox()
+    const reviewed = await plan(parent, root, [artifact('new.md', generated('reviewed\n'))])
+    const hooks: TransactionHooks = {
+      beforeRename: async ({ phase, from }) => {
+        if (phase === 'install') await writeFile(from, 'unreviewed bytes\n')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    await expectMissing(join(root, 'new.md'))
   })
 
   it('restores an existing target edited at the mutation boundary', async () => {
@@ -720,20 +765,21 @@ describe('transactional plan application', () => {
     expect((await readdir(root)).some((name) => name.includes('.backup'))).toBe(true)
   })
 
-  it('rejects a prior schema-1 plan explicitly before canonical hash processing', async () => {
+  it('applies a prior Task 9 schema-1 plan without Managed Region hash metadata', async () => {
     const { parent, root } = await sandbox()
     const reviewed = await plan(parent, root, [artifact('new.md', generated('new\n'))])
     const { currentManagedRegionHashes: _newField, ...priorFields } = reviewed
-    const priorPlan = { ...priorFields, schemaVersion: '1' } as ChangePlan
+    const priorWithoutHash = { ...priorFields, schemaVersion: '1', planHash: undefined }
+    const priorPlan = {
+      ...priorFields,
+      schemaVersion: '1',
+      planHash: computePlanHash(priorWithoutHash),
+    } as ChangePlan
 
     const result = await applyPlan(priorPlan, { repositoryRoot: root, toolkitVersion })
 
-    expect(result).toMatchObject({
-      ok: false,
-      code: 'invalid-plan',
-      message: expect.stringMatching(/unsupported.*schema 1/i),
-    })
-    await expectMissing(join(root, 'new.md'))
+    expect(result).toMatchObject({ ok: true })
+    expect(await readFile(join(root, 'new.md'), 'utf8')).toBe(generated('new\n'))
   })
 })
 
