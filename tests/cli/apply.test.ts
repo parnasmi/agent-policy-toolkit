@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import {
   lstat,
+  link,
   mkdir,
   mkdtemp,
   open,
@@ -569,6 +570,137 @@ describe('transactional plan application', () => {
     const backup = (await readdir(root)).find((name) => name.endsWith('.backup'))
     if (backup === undefined) throw new Error('expected recoverable backup')
     expect(await readFile(join(root, backup), 'utf8')).toBe(previous)
+  })
+
+  it('refuses a recovery copy corrupted before the no-clobber restore link', async () => {
+    const { parent, root } = await sandbox()
+    const previous = generated('old\n')
+    await writeFile(join(root, 'owned.md'), previous)
+    const reviewed = await plan(parent, root, [artifact('owned.md', generated('reviewed\n'))])
+    let recoveryCopies = 0
+    const hooks: TransactionHooks = {
+      afterRecoveryCopy: async (path: string) => {
+        recoveryCopies += 1
+        if (recoveryCopies === 1) await writeFile(path, 'corrupted recovery bytes\n')
+      },
+      beforeRename: ({ phase }) => {
+        if (phase === 'install') throw new Error('stop before install')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    if (result.ok) throw new Error('expected recovery verification failure')
+    expect(recoveryCopies).toBeGreaterThan(0)
+    expect(result.message).toMatch(/recovery.*hash|backup preserved/i)
+    await expectMissing(join(root, 'owned.md'))
+    const backup = (await readdir(root)).find((name) => name.endsWith('.backup'))
+    if (backup === undefined) throw new Error('expected recoverable original backup')
+    expect(await readFile(join(root, backup), 'utf8')).toBe(previous)
+  })
+
+  it('refuses a recovery path that aliases the retained backup inode', async () => {
+    const { parent, root } = await sandbox()
+    const previous = generated('old\n')
+    await writeFile(join(root, 'owned.md'), previous)
+    const reviewed = await plan(parent, root, [artifact('owned.md', generated('reviewed\n'))])
+    let recoveryCopies = 0
+    const hooks: TransactionHooks = {
+      afterRecoveryCopy: async (path: string) => {
+        recoveryCopies += 1
+        if (recoveryCopies !== 1) return
+        const backup = (await readdir(root)).find((name) => name.endsWith('.backup'))
+        if (backup === undefined) throw new Error('expected backup before alias attack')
+        const { rm } = await import('node:fs/promises')
+        await rm(path)
+        await link(join(root, backup), path)
+      },
+      beforeRename: ({ phase }) => {
+        if (phase === 'install') throw new Error('stop before install')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    if (result.ok) throw new Error('expected aliased recovery rejection')
+    expect(result.message).toMatch(/recovery.*(?:identity|copy).*backup|backup preserved/i)
+    await expectMissing(join(root, 'owned.md'))
+    const backup = (await readdir(root)).find((name) => name.endsWith('.backup'))
+    if (backup === undefined) throw new Error('expected recoverable original backup')
+    expect(await readFile(join(root, backup), 'utf8')).toBe(previous)
+  })
+
+  it('reports a retained recovery copy when cleanup loses the reviewed parent', async () => {
+    const { parent, root } = await sandbox()
+    const movedRoot = join(parent, 'moved-consumer')
+    const previous = generated('old\n')
+    await writeFile(join(root, 'owned.md'), previous)
+    const reviewed = await plan(parent, root, [artifact('owned.md', generated('reviewed\n'))])
+    const hooks: TransactionHooks = {
+      beforeRename: ({ phase }) => {
+        if (phase === 'install') throw new Error('stop before install')
+      },
+      afterRestoreLink: async () => {
+        const { rename, symlink } = await import('node:fs/promises')
+        await rename(root, movedRoot)
+        await symlink(movedRoot, root)
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    if (result.ok) throw new Error('expected cleanup failure')
+    const recovery = (await readdir(movedRoot)).find((name) => name.includes('.agent-policy-recovery-'))
+    if (recovery === undefined) throw new Error('expected retained recovery copy')
+    expect(result.message).toContain(recovery)
+    expect(result.message).toMatch(/recovery.*cleanup|cannot remove.*recovery|cleanup.*failed/i)
+  })
+
+  it('does not claim a backup is preserved after an external deletion race', async () => {
+    const { parent, root } = await sandbox()
+    const previous = generated('old\n')
+    await writeFile(join(root, 'owned.md'), previous)
+    const reviewed = await plan(parent, root, [artifact('owned.md', generated('reviewed\n'))])
+    let restoreCount = 0
+    const hooks: TransactionHooks = {
+      beforeRename: ({ phase }) => {
+        if (phase === 'install') throw new Error('stop before install')
+      },
+      afterRestoreLink: async () => {
+        restoreCount += 1
+        if (restoreCount !== 1) return
+        const backup = (await readdir(root)).find((name) => name.endsWith('.backup'))
+        if (backup === undefined) throw new Error('expected backup before deletion race')
+        const { rm } = await import('node:fs/promises')
+        await rm(join(root, backup))
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    if (result.ok) throw new Error('expected transaction failure')
+    expect(result.message).not.toMatch(/backup (?:preserved|retained) at/i)
+    expect(result.message).toMatch(/backup.*(?:missing|unavailable|could not verify|not present)/i)
   })
 
   it('preserves a concurrent target that appears before backup restoration', async () => {

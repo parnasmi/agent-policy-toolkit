@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { lstat, realpath } from 'node:fs/promises'
+import { lstat, readFile, realpath } from 'node:fs/promises'
 import { basename, dirname, join, relative, sep } from 'node:path'
 
 import type { PreparedOperation } from './preconditions.js'
@@ -23,6 +23,7 @@ export interface TransactionHooks {
   readonly afterPathCheck?: (
     event: { readonly phase: 'prepare' | 'backup' | 'install'; readonly path: string },
   ) => void | Promise<void>
+  readonly afterRecoveryCopy?: (path: string) => void | Promise<void>
   readonly afterRestoreLink?: (path: string) => void | Promise<void>
   /** Test seam for deterministic filesystem-capability failures. */
   readonly failStableOperation?: StableOperation['operation'] | (
@@ -41,6 +42,7 @@ interface TransactionEntry {
   readonly parentInode: number
   readonly parentPath: string
   backupCreated: boolean
+  backupHash?: string
   backupDevice?: number
   backupInode?: number
   installed: boolean
@@ -77,8 +79,15 @@ interface StableOperationResult {
   readonly hash?: string
   readonly fileDevice?: number
   readonly fileInode?: number
+  readonly fileIsFile?: boolean
+  readonly fileIsSymbolicLink?: boolean
   readonly createdDirectories?: readonly CreatedDirectory[]
   readonly finalParent?: StableParent
+}
+
+interface RecoveryCleanupFailure {
+  readonly path: string
+  readonly error: string
 }
 
 const stableFilesystemWorker = String.raw`
@@ -150,7 +159,12 @@ try {
     result.hash = createHash('sha256').update(content, 'utf8').digest('hex')
   } else if (command.operation === 'stat') {
     const metadata = await lstat(safeName(command.name))
-    result = { fileDevice: metadata.dev, fileInode: metadata.ino }
+    result = {
+      fileDevice: metadata.dev,
+      fileInode: metadata.ino,
+      fileIsFile: metadata.isFile(),
+      fileIsSymbolicLink: metadata.isSymbolicLink(),
+    }
   } else if (command.operation === 'remove-directory') {
     await rmdir(safeName(command.name))
   } else if (command.operation === 'mkdir-chain') {
@@ -387,32 +401,85 @@ async function assertMutationPath(
 async function restoreBackupWithoutOverwrite(
   entry: TransactionEntry,
   hooks?: TransactionHooks,
+  onRecoveryCleanupFailure?: (failure: RecoveryCleanupFailure) => void,
 ): Promise<void> {
   if (entry.backupPath === undefined) return
-  const copied = await runStableOperation(entryParent(entry), {
-    operation: 'copy',
-    from: entryName(entry, entry.backupPath),
-    to: entryName(entry, entry.recoveryPath),
-  }, hooks)
-  const backup = await runStableOperation(entryParent(entry), {
-    operation: 'hash',
-    name: entryName(entry, entry.backupPath),
-  })
-  if (copied.hash !== backup.hash) {
-    throw new Error(`original backup changed while preparing restore; preserved at ${entry.backupPath}`)
-  }
+  let primaryError: unknown
   try {
+    await runStableOperation(entryParent(entry), {
+      operation: 'copy',
+      from: entryName(entry, entry.backupPath),
+      to: entryName(entry, entry.recoveryPath),
+    }, hooks)
+    await hooks?.afterRecoveryCopy?.(entry.recoveryPath)
+
+    // The copy worker hashes its source buffer. Recheck the retained backup
+    // first, then hash and stat the actual recovery destination immediately
+    // before linking it into the target.
+    const backup = await runStableOperation(entryParent(entry), {
+      operation: 'hash',
+      name: entryName(entry, entry.backupPath),
+    })
+    const backupIdentity = await runStableOperation(entryParent(entry), {
+      operation: 'stat',
+      name: entryName(entry, entry.backupPath),
+    })
+    const recoveryHash = await runStableOperation(entryParent(entry), {
+      operation: 'hash',
+      name: entryName(entry, entry.recoveryPath),
+    })
+    const recoveryIdentity = await runStableOperation(entryParent(entry), {
+      operation: 'stat',
+      name: entryName(entry, entry.recoveryPath),
+    })
+    if (
+      recoveryHash.hash === undefined
+      || recoveryIdentity.fileDevice === undefined
+      || recoveryIdentity.fileInode === undefined
+      || recoveryIdentity.fileIsFile !== true
+      || recoveryIdentity.fileIsSymbolicLink === true
+      || backupIdentity.fileDevice === undefined
+      || backupIdentity.fileInode === undefined
+      || backupIdentity.fileIsFile !== true
+      || backupIdentity.fileIsSymbolicLink === true
+      || recoveryHash.hash !== backup.hash
+      || recoveryIdentity.fileDevice === backupIdentity.fileDevice
+      && recoveryIdentity.fileInode === backupIdentity.fileInode
+      || (
+        entry.backupDevice !== undefined
+        && (
+          backupIdentity.fileDevice !== entry.backupDevice
+          || backupIdentity.fileInode !== entry.backupInode
+        )
+      )
+    ) {
+      throw new Error(`recovery copy verification failed before restore link; original backup remains at ${entry.backupPath}`)
+    }
     await runStableOperation(entryParent(entry), {
       operation: 'link',
       from: entryName(entry, entry.recoveryPath),
       to: entryName(entry, entry.operation.targetPath),
     }, hooks)
     await hooks?.afterRestoreLink?.(entry.operation.relativePath)
+  } catch (error) {
+    primaryError = error
+    throw error
   } finally {
-    await runStableOperation(entryParent(entry), {
-      operation: 'remove',
-      name: entryName(entry, entry.recoveryPath),
-    })
+    try {
+      await runStableOperation(entryParent(entry), {
+        operation: 'remove',
+        name: entryName(entry, entry.recoveryPath),
+      })
+    } catch (cleanupError) {
+      const errorMessage = cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+      onRecoveryCleanupFailure?.({ path: entry.recoveryPath, error: errorMessage })
+      const cleanupMessage = `recovery copy cleanup failed at ${entry.recoveryPath}: ${errorMessage}`
+      if (primaryError === undefined) throw new Error(cleanupMessage, { cause: cleanupError })
+      throw new Error(
+        `${primaryError instanceof Error ? primaryError.message : String(primaryError)}; ${cleanupMessage}`,
+        { cause: primaryError },
+      )
+    }
   }
 }
 
@@ -470,6 +537,57 @@ async function cleanEmptyDirectories(directories: readonly CreatedDirectory[]): 
   }
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+async function describeBackupRetention(entry: TransactionEntry): Promise<string> {
+  const backupPath = entry.backupPath
+  if (backupPath === undefined) return `${entry.operation.relativePath}: no original backup path was created`
+  try {
+    const metadata = await lstat(backupPath)
+    if (!metadata.isFile() || metadata.isSymbolicLink()) {
+      return `${entry.operation.relativePath}: original backup path is not a regular file at ${backupPath}`
+    }
+    const content = await readFile(backupPath, 'utf8')
+    const currentHash = sha256Utf8(content)
+    const identityMatches = entry.backupDevice === undefined
+      || (
+        metadata.dev === entry.backupDevice
+        && metadata.ino === entry.backupInode
+      )
+    const bytesMatch = entry.backupHash === undefined || currentHash === entry.backupHash
+    if (identityMatches && bytesMatch) {
+      return `${entry.operation.relativePath}: original backup retained at ${backupPath}; backup preserved at the same path (verified at reporting time)`
+    }
+    return `${entry.operation.relativePath}: original backup changed or was replaced before reporting at ${backupPath}; backup was not preserved at the reviewed identity`
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'ENOENT') {
+      return `${entry.operation.relativePath}: original backup not present when reported at ${backupPath}`
+    }
+    return `${entry.operation.relativePath}: original backup could not be verified at ${backupPath}: ${errorMessage(error)}`
+  }
+}
+
+async function describeRecoveryCleanupFailure(
+  failure: RecoveryCleanupFailure,
+): Promise<string> {
+  try {
+    const metadata = await lstat(failure.path)
+    if (metadata.isFile() && !metadata.isSymbolicLink()) {
+      return `recovery copy retained at ${failure.path}; cleanup failed: ${failure.error}`
+    }
+    return `recovery path occupied by a non-file at ${failure.path}; cleanup failed: ${failure.error}`
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'ENOENT') {
+      return `recovery cleanup failed at ${failure.path}; no recovery copy was present when reported: ${failure.error}`
+    }
+    return `recovery copy at ${failure.path} could not be verified after cleanup failure: ${errorMessage(error)}; cleanup failed: ${failure.error}`
+  }
+}
+
 /** Replace a complete operation set, restoring backups in reverse order on any failure. */
 export async function applyTransaction(
   repositoryRoot: string,
@@ -481,6 +599,11 @@ export async function applyTransaction(
   const transactionId = randomUUID()
   const entries: TransactionEntry[] = []
   const createdDirectories: CreatedDirectory[] = []
+  const recoveryCleanupFailures = new Map<string, string>()
+  const noteRecoveryCleanupFailure = ({ path, error }: RecoveryCleanupFailure): void => {
+    const previous = recoveryCleanupFailures.get(path)
+    recoveryCleanupFailures.set(path, previous === undefined ? error : `${previous}; ${error}`)
+  }
   try {
     for (const operation of operations) {
       await hooks?.beforePrepare?.(operation.relativePath)
@@ -521,20 +644,21 @@ export async function applyTransaction(
         })
         entry.backupCreated = true
         await assertMutationPath(repositoryRoot, entry)
-        const backedUp = await runStableOperation(entryParent(entry), {
-          operation: 'hash',
-          name: entryName(entry, entry.backupPath),
-        })
-        if (backedUp.hash !== entry.operation.expectedCurrentSha256) {
-          await restoreBackupWithoutOverwrite(entry, hooks)
-          throw new Error(`Artifact changed at mutation boundary: ${entry.operation.relativePath}`)
-        }
         const backupIdentity = await runStableOperation(entryParent(entry), {
           operation: 'stat',
           name: entryName(entry, entry.backupPath),
         })
         entry.backupDevice = backupIdentity.fileDevice
         entry.backupInode = backupIdentity.fileInode
+        const backedUp = await runStableOperation(entryParent(entry), {
+          operation: 'hash',
+          name: entryName(entry, entry.backupPath),
+        })
+        entry.backupHash = backedUp.hash
+        if (backedUp.hash !== entry.operation.expectedCurrentSha256) {
+          await restoreBackupWithoutOverwrite(entry, hooks, noteRecoveryCleanupFailure)
+          throw new Error(`Artifact changed at mutation boundary: ${entry.operation.relativePath}`)
+        }
       }
       if (entry.temporaryPath !== undefined) {
         await invokeRenameHook(
@@ -603,7 +727,7 @@ export async function applyTransaction(
           || backupIdentity.fileDevice !== entry.backupDevice
           || backupIdentity.fileInode !== entry.backupInode
         ) {
-          throw new Error(`backup changed; preserved at ${entry.backupPath}`)
+          throw new Error(`backup changed before cleanup at ${entry.backupPath}`)
         }
         await runStableOperation(entryParent(entry), {
           operation: 'remove',
@@ -611,7 +735,7 @@ export async function applyTransaction(
         })
       } catch (cleanupError) {
         cleanupWarnings.push(
-          `BACKUP CLEANUP FAILED for ${entry.operation.relativePath}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+          `BACKUP CLEANUP FAILED for ${entry.operation.relativePath}: ${await describeBackupRetention(entry)}; ${errorMessage(cleanupError)}`,
         )
       }
     }
@@ -641,7 +765,7 @@ export async function applyTransaction(
             )
             if (entry.backupCreated && entry.backupPath !== undefined) {
               rollbackFailures.push(
-                `${entry.operation.relativePath}: original backup preserved at ${entry.backupPath}`,
+                await describeBackupRetention(entry),
               )
             }
             continue
@@ -694,7 +818,7 @@ export async function applyTransaction(
       }
       if (entry.backupCreated && entry.backupPath !== undefined) {
         if (entry.rollbackConflict) {
-          rollbackFailures.push(`${entry.operation.relativePath}: original backup preserved at ${entry.backupPath}`)
+          rollbackFailures.push(await describeBackupRetention(entry))
           continue
         }
         try {
@@ -720,15 +844,13 @@ export async function applyTransaction(
             || backupIdentity.fileDevice !== entry.backupDevice
             || backupIdentity.fileInode !== entry.backupInode
           ) {
-            throw new Error(`original backup identity changed; preserved at ${entry.backupPath}`)
+            throw new Error(`original backup identity changed before restore at ${entry.backupPath}`)
           }
-          await restoreBackupWithoutOverwrite(entry, hooks)
-          rollbackFailures.push(
-            `${entry.operation.relativePath}: original backup retained at ${entry.backupPath} after no-clobber restore`,
-          )
+          await restoreBackupWithoutOverwrite(entry, hooks, noteRecoveryCleanupFailure)
+          rollbackFailures.push(await describeBackupRetention(entry))
         } catch (rollbackError) {
           rollbackFailures.push(
-            `${entry.operation.relativePath}: backup preserved at ${entry.backupPath}; ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+            `${await describeBackupRetention(entry)}; ${errorMessage(rollbackError)}`,
           )
         }
       }
@@ -753,6 +875,9 @@ export async function applyTransaction(
       rollbackFailures.push(
         `created directories: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
       )
+    }
+    for (const [path, error] of recoveryCleanupFailures) {
+      rollbackFailures.push(await describeRecoveryCleanupFailure({ path, error }))
     }
     throw new TransactionError(error, rollbackFailures)
   }
