@@ -88,7 +88,7 @@ agent-policy check
 
 `check` compiles into temporary external staging, validates schemas, aliases, overlays, dependencies, migrations, projections, ownership, and hashes, and compares the result with committed output. It is read-only, creates no consumer cache, and reports stale toolkit-owned generated files. A clean result means the source and committed Codex projections match this exact toolkit version.
 
-The check also reproduces `.agent-policy/policy.lock.json`, including its exact toolkit and Adapter Knowledge versions and managed-artifact hashes. A missing, malformed, stale, or tampered lock is drift.
+The check also reproduces `.agent-policy/policy.lock.json`, including its exact toolkit and Adapter Knowledge versions and owned managed-artifact integrity records. A Managed Region record hashes only the canonical marker-delimited region; a fully managed record hashes canonical generated content. Unmanaged `AGENTS.md` prose and CRLF/LF changes outside that region therefore do not rewrite the lock, while a Managed Region edit remains drift. A missing, malformed, stale, or tampered lock is drift.
 
 ## Drift reconciliation
 
@@ -116,7 +116,7 @@ agent-policy apply /absolute/path/to/remove-generated.json --yes
 
 Both modes preserve `.agent-policy/`, the toolkit dependency, and local scripts. Source purge, package-wiring uninstall, and a flag implying either operation are deliberately absent from this release. Reinitializing from the preserved source must produce identical projection bytes and hashes.
 
-Removal planning also recompiles the canonical projection and compares every present owned artifact with its desired bytes before creating a removal plan. A drifted Managed Region or generated skill fails closed and asks for reconciliation; it does not use the edited bytes to construct a deletion plan. Stale generated skills are eligible only when their exact owner and self-contained hash verify. When canonical project sources are already absent, `--generated` can still remove current-release projections by verifying their self-contained artifact hashes; missing or invalid metadata fails closed rather than allowing an unverifiable deletion. Generated skill ownership and hashes accept LF or CRLF line endings without accepting a changed owner or content.
+Target removal recompiles the canonical projection and compares every present owned artifact with its desired bytes before creating a removal plan. Independent `--generated` removal enumerates recognized toolkit-owned projections directly, so it remains available when Codex is no longer selected or canonical sources are missing. A drifted Managed Region or generated skill fails closed and asks for reconciliation; it does not use the edited bytes to construct a deletion plan. Stale generated skills are eligible only when their exact owner and self-contained hash verify. Missing or invalid metadata fails closed rather than allowing an unverifiable deletion. Generated skill ownership and hashes accept LF or CRLF line endings without accepting a changed owner or content.
 
 ## Scope and profiles
 

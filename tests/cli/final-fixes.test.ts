@@ -143,6 +143,16 @@ describe('final foundation lifecycle contracts', () => {
         '.agents/skills/react/SKILL.md',
         'AGENTS.md',
       ])
+      expect(lock?.managedArtifactHashes['AGENTS.md']).toEqual({
+        sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        operation: 'managed-region',
+        owner: '@agent-policy/agent-policy-toolkit',
+      })
+      expect(lock?.managedArtifactHashes['.agents/skills/react/SKILL.md']).toEqual({
+        sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        operation: 'replace',
+        owner: '@agent-policy/agent-policy-toolkit',
+      })
       const check = io()
       await expect(runCli(['check'], check)).resolves.toBe(0)
 
@@ -156,6 +166,111 @@ describe('final foundation lifecycle contracts', () => {
       await expect(runCli(['apply', removePlanPath, '--yes'], io())).resolves.toBe(0)
       expect(await exists(join(root, '.agent-policy/policy.lock.json'))).toBe(false)
       expect(await exists(join(root, '.agent-policy/policy.yaml'))).toBe(true)
+    } finally {
+      process.chdir(previousCwd)
+      await rm(parent, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps policy lock clean when unmanaged AGENTS bytes change', async () => {
+    const { parent, root } = await consumer()
+    const initPlanPath = join(parent, 'unmanaged-lock-init-plan.json')
+    const previousCwd = process.cwd()
+    process.chdir(root)
+    try {
+      await expect(runCli([
+        'init', '--target', 'codex', '--bundles', 'core,react', '--plan', initPlanPath,
+      ], io())).resolves.toBe(0)
+      await expect(runCli(['apply', initPlanPath, '--yes'], io())).resolves.toBe(0)
+      const lockPath = join(root, '.agent-policy/policy.lock.json')
+      const lockBefore = await readFile(lockPath, 'utf8')
+
+      const agentsPath = join(root, 'AGENTS.md')
+      const generated = await readFile(agentsPath, 'utf8')
+      await writeFile(agentsPath, `${generated}# Human-owned footer\n`)
+      await expect(runCli(['check'], io())).resolves.toBe(0)
+      expect(await readFile(lockPath, 'utf8')).toBe(lockBefore)
+
+      const managedStart = '<!-- agent-policy:start owner=@agent-policy/agent-policy-toolkit -->'
+      const managedEnd = '<!-- agent-policy:end -->'
+      const start = generated.indexOf(managedStart)
+      const end = generated.indexOf(managedEnd) + managedEnd.length
+      expect(start).toBeGreaterThanOrEqual(0)
+      expect(end).toBeGreaterThan(start)
+      const region = generated.slice(start, end)
+      await writeFile(agentsPath, `# Human-owned preface\r\n${region}\r\n# Human-owned footer\r\n`)
+      await expect(runCli(['check'], io())).resolves.toBe(0)
+      expect(await readFile(lockPath, 'utf8')).toBe(lockBefore)
+    } finally {
+      process.chdir(previousCwd)
+      await rm(parent, { recursive: true, force: true })
+    }
+  })
+
+  it('reports Managed Region edits as drift even when the lock remains unchanged', async () => {
+    const { parent, root } = await consumer()
+    const initPlanPath = join(parent, 'managed-region-lock-init-plan.json')
+    const previousCwd = process.cwd()
+    process.chdir(root)
+    try {
+      await expect(runCli([
+        'init', '--target', 'codex', '--bundles', 'core,react', '--plan', initPlanPath,
+      ], io())).resolves.toBe(0)
+      await expect(runCli(['apply', initPlanPath, '--yes'], io())).resolves.toBe(0)
+      const lockPath = join(root, '.agent-policy/policy.lock.json')
+      const lockBefore = await readFile(lockPath, 'utf8')
+
+      const agentsPath = join(root, 'AGENTS.md')
+      const generated = await readFile(agentsPath, 'utf8')
+      await writeFile(agentsPath, generated.replace('## Core policy', '## Human edit inside managed policy'))
+      const check = io()
+      await expect(runCli(['check'], check)).resolves.toBe(1)
+      expect(check.stdout).toMatch(/AGENTS|Core policy|drift|changed/i)
+      expect(await readFile(lockPath, 'utf8')).toBe(lockBefore)
+    } finally {
+      process.chdir(previousCwd)
+      await rm(parent, { recursive: true, force: true })
+    }
+  })
+
+  it('removes generated projections after Codex is removed from the manifest', async () => {
+    const { parent, root } = await consumer()
+    const initPlanPath = join(parent, 'target-removed-init-plan.json')
+    const removePlanPath = join(parent, 'target-removed-generated-plan.json')
+    const previousCwd = process.cwd()
+    process.chdir(root)
+    try {
+      await writeFile(join(root, 'package.json'), '{"name":"consumer"}\n')
+      await expect(runCli([
+        'init', '--target', 'codex', '--bundles', 'core,react', '--plan', initPlanPath,
+      ], io())).resolves.toBe(0)
+      await expect(runCli(['apply', initPlanPath, '--yes'], io())).resolves.toBe(0)
+
+      const policyPath = join(root, '.agent-policy/policy.yaml')
+      const policy = await readFile(policyPath, 'utf8')
+      await writeFile(policyPath, policy.replace(/targets:\s*\[\s*codex\s*\]/, 'targets: []'))
+
+      await expect(runCli([
+        'remove', '--generated', '--plan', removePlanPath,
+      ], io())).resolves.toBe(0)
+      const removal = JSON.parse(await readFile(removePlanPath, 'utf8')) as {
+        readonly desiredArtifacts: readonly { readonly path: string; readonly operation: string }[]
+        readonly removals: readonly string[]
+      }
+      expect(removal.desiredArtifacts).toEqual([
+        expect.objectContaining({ path: 'AGENTS.md', operation: 'managed-region-remove' }),
+      ])
+      expect(removal.removals).toEqual([
+        '.agent-policy/policy.lock.json',
+        '.agents/skills/react/SKILL.md',
+      ])
+
+      await expect(runCli(['apply', removePlanPath, '--yes'], io())).resolves.toBe(0)
+      expect(await readFile(policyPath, 'utf8')).toContain('targets: []')
+      expect(await readFile(join(root, 'package.json'), 'utf8')).toBe('{"name":"consumer"}\n')
+      expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toBe('\n')
+      expect(await exists(join(root, '.agents/skills/react/SKILL.md'))).toBe(false)
+      expect(await exists(join(root, '.agent-policy/policy.lock.json'))).toBe(false)
     } finally {
       process.chdir(previousCwd)
       await rm(parent, { recursive: true, force: true })

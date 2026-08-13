@@ -21,7 +21,16 @@
       "type": "object",
       "additionalProperties": false,
       "patternProperties": {
-        "^(?:[A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+$": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        "^(?:[A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sha256", "operation", "owner"],
+          "properties": {
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "operation": { "enum": ["managed-region", "replace"] },
+            "owner": { "const": "@agent-policy/agent-policy-toolkit" }
+          }
+        }
       }
     },
     "generatedBy": { "const": "@agent-policy/agent-policy-toolkit" },

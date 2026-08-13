@@ -9,13 +9,19 @@ export interface ProjectManifest extends ProjectPolicy {
   readonly overlays?: readonly string[]
 }
 
+export interface ManagedArtifactIntegrity {
+  readonly sha256: string
+  readonly operation: 'managed-region' | 'replace'
+  readonly owner: '@agent-policy/agent-policy-toolkit'
+}
+
 /** A recorded project source version without any generated artifact state. */
 export interface ProjectPolicyLock {
   readonly schemaVersion: ProjectSchemaVersion
   readonly toolkitVersion: string
   readonly adapterKnowledgeVersion: string
   readonly canonicalSourceHash: string
-  readonly managedArtifactHashes: Readonly<Record<string, string>>
+  readonly managedArtifactHashes: Readonly<Record<string, ManagedArtifactIntegrity>>
   readonly generatedBy: '@agent-policy/agent-policy-toolkit'
   readonly artifactHash: string
 }

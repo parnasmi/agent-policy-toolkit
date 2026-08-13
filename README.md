@@ -42,7 +42,7 @@ Do not use a workspace, link, branch, or version range for a dogfood installatio
 
 When `--bundles` is omitted, detection is advisory and must be confirmed interactively. `--yes` confirms application of a reviewed plan; it never confirms an advisory Bundle Selection. Existing prose in `AGENTS.md` remains unmanaged and byte-preserved outside the bounded Managed Region.
 
-Successful initialization also generates `.agent-policy/policy.lock.json`. It is not canonical source: the lock records the exact toolkit release, Codex Adapter Knowledge version, canonical source digest, and hashes for every generated Codex artifact. `check` reproduces it read-only; projection removal removes the generated lock while preserving `policy.yaml` and other canonical sources.
+Successful initialization also generates `.agent-policy/policy.lock.json`. It is not canonical source: the lock records the exact toolkit release, Codex Adapter Knowledge version, canonical source digest, and owned integrity records for every generated Codex artifact. Managed Region records hash only the canonical region (with operation and owner metadata), so unmanaged `AGENTS.md` prose and boundary line-ending changes do not rewrite the lock; fully managed files record their canonical generated-content hash. `check` reproduces it read-only; projection removal removes the generated lock while preserving `policy.yaml` and other canonical sources.
 
 For drift, interactive clients offer `adopt`, `regenerate`, or `abort`. The strict non-interactive form is `--reconcile adopt|regenerate|abort`; unresolved drift fails without writing. Regeneration and any representable adoption produce a new external reviewed plan or proposal; neither choice edits files directly.
 

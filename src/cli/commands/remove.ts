@@ -3,7 +3,6 @@ import { resolve } from 'node:path'
 import type { CliIo } from '../main.js'
 import type { CliArguments } from '../arguments.js'
 import type { VirtualArtifact } from '../../domain/artifacts.js'
-import { PolicyError } from '../../domain/diagnostics.js'
 import { hasValidArtifactHash } from '../../planner/hash.js'
 import { hasValidPolicyLockHash, POLICY_LOCK_PATH } from '../../planner/policy-lock.js'
 import { MANAGED_REGION_END, MANAGED_REGION_START } from '../../adapters/codex/managed-region.js'
@@ -34,12 +33,6 @@ function assertCanonicalArtifact(path: string, current: string, canonical: Virtu
     : current
   if (hasValidArtifactHash(integrityContent)) return
   throw new ArtifactDriftError(path, current, `Generated artifact drift at ${path}; reconcile before planning removal`)
-}
-
-function sourceUnavailable(error: unknown): boolean {
-  return error instanceof PolicyError
-    && error.diagnostics.length > 0
-    && error.diagnostics.every(({ code }) => code === 'MISSING_MANIFEST_REFERENCE' || code === 'MISSING_POLICY_SOURCE')
 }
 
 function assertSourceLessArtifact(path: string, content: string, managedRegion: boolean): void {
@@ -100,20 +93,11 @@ async function targetRemoval(
 async function generatedRemoval(
   context: CommandContext,
 ): Promise<{ readonly sourcePaths: readonly string[]; readonly desired: readonly VirtualArtifact[]; readonly removals: readonly string[] }> {
-  let compilation: Awaited<ReturnType<typeof compileCodex>> | undefined
-  try {
-    compilation = await compileCodex(context)
-  } catch (error) {
-    if (!sourceUnavailable(error)) throw error
-  }
-  const canonical = new Map(compilation?.artifacts.map((artifact) => [artifact.path, artifact]) ?? [])
   const generated = await findGeneratedFiles(context.repositoryRoot)
   const desired: VirtualArtifact[] = []
   const removals: string[] = []
   for (const file of generated) {
-    const expected = canonical.get(file.path)
-    if (expected === undefined) assertSourceLessArtifact(file.path, file.content, file.kind === 'managed-region')
-    else assertCanonicalArtifact(file.path, file.content, expected)
+    assertSourceLessArtifact(file.path, file.content, file.kind === 'managed-region')
     if (file.kind === 'managed-region') {
       const artifact = managedRemovalArtifact(file)
       if (artifact !== undefined) desired.push(artifact)
@@ -123,12 +107,10 @@ async function generatedRemoval(
   }
   const lock = await readText(context.repositoryRoot, '.agent-policy/policy.lock.json')
   if (lock !== undefined) {
-    const expected = canonical.get('.agent-policy/policy.lock.json')
-    if (expected !== undefined) assertCanonicalArtifact('.agent-policy/policy.lock.json', lock, expected)
-    else assertSourceLessArtifact('.agent-policy/policy.lock.json', lock, false)
+    assertSourceLessArtifact('.agent-policy/policy.lock.json', lock, false)
     removals.push('.agent-policy/policy.lock.json')
   }
-  return { sourcePaths: compilation?.sourcePaths ?? [], desired, removals }
+  return { sourcePaths: [], desired, removals }
 }
 
 export async function runRemove(
