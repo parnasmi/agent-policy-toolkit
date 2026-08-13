@@ -29,28 +29,39 @@ function lines(value: string | undefined): string[] {
 function unified(oldValue: string | undefined, nextValue: string): string[] {
   const oldLines = lines(oldValue)
   const nextLines = lines(nextValue)
-  let prefix = 0
-  while (prefix < oldLines.length && prefix < nextLines.length && oldLines[prefix] === nextLines[prefix]) prefix += 1
-  let suffix = 0
-  while (
-    suffix < oldLines.length - prefix
-    && suffix < nextLines.length - prefix
-    && oldLines[oldLines.length - suffix - 1] === nextLines[nextLines.length - suffix - 1]
-  ) suffix += 1
   const output: string[] = []
-  for (const line of oldLines.slice(prefix, oldLines.length - suffix)) output.push(`-${line}`)
-  for (const line of nextLines.slice(prefix, nextLines.length - suffix)) output.push(`+${line}`)
+  for (const line of oldLines) output.push(`-${line}`)
+  for (const line of nextLines) output.push(`+${line}`)
   return output
 }
 
 function currentHash(
-  plan: ChangePlan,
-  path: string,
   value: string | undefined,
 ): string | undefined {
-  const expected = plan.currentArtifactHashes[path]
-  if (expected !== undefined) return expected
   return value === undefined ? undefined : sha256Utf8(value)
+}
+
+/** Return all reviewed paths whose current bytes no longer satisfy the plan. */
+export function detectChangePlanDrift(
+  plan: ChangePlan,
+  contents: ReadonlyMap<string, string | undefined>,
+): readonly string[] {
+  const drift: string[] = []
+  for (const path of Object.keys(plan.sourceHashes)) {
+    const content = contents.get(path)
+    if (content === undefined || sha256Utf8(content) !== plan.sourceHashes[path]) drift.push(path)
+  }
+  for (const artifact of plan.desiredArtifacts) {
+    const current = contents.get(artifact.path)
+    const expected = currentHash(current)
+    const plannedExpected = plan.currentArtifactHashes[artifact.path]
+    if (plannedExpected === undefined ? current !== undefined : expected !== plannedExpected) drift.push(artifact.path)
+  }
+  for (const path of plan.removals) {
+    const current = contents.get(path)
+    if (current === undefined || sha256Utf8(current) !== plan.currentArtifactHashes[path]) drift.push(path)
+  }
+  return [...new Set(drift)].sort(compareStrings)
 }
 
 /** Render a review-oriented, deterministic diff with complete policy and generated contents. */
@@ -79,7 +90,15 @@ export function formatChangePlanDiff(plan: ChangePlan, options: DiffFormatOption
     linesOut.push(`### ${absolute(options.repositoryRoot, path)}`)
     linesOut.push(`expected sha256: ${plan.sourceHashes[path]}`)
     if (content === undefined) linesOut.push('! missing source')
-    else linesOut.push(...lines(content).map((line) => ` ${line}`))
+    else {
+      const change = plan.sourceChanges?.find((candidate) => candidate.path === path)
+      if (change === undefined) linesOut.push(...lines(content).map((line) => ` ${line}`))
+      else {
+        linesOut.push(`--- ${absolute(options.repositoryRoot, path)}`)
+        linesOut.push(`+++ ${absolute(options.repositoryRoot, path)} (reviewed)`)
+        linesOut.push(...unified(content, change.content))
+      }
+    }
   }
 
   linesOut.push('', 'Generated changes:')
@@ -92,23 +111,9 @@ export function formatChangePlanDiff(plan: ChangePlan, options: DiffFormatOption
   }
 
   linesOut.push('', 'Drift:')
-  const drift: string[] = []
-  for (const path of sourcePaths) {
-    const content = options.contents.get(path)
-    if (content === undefined || sha256Utf8(content) !== plan.sourceHashes[path]) drift.push(path)
-  }
-  for (const artifact of plan.desiredArtifacts) {
-    const current = options.contents.get(artifact.path)
-    const expected = currentHash(plan, artifact.path, current)
-    const plannedExpected = plan.currentArtifactHashes[artifact.path]
-    if (plannedExpected === undefined ? current !== undefined : expected !== plannedExpected) drift.push(artifact.path)
-  }
-  for (const path of plan.removals) {
-    const current = options.contents.get(path)
-    if (current === undefined || sha256Utf8(current) !== plan.currentArtifactHashes[path]) drift.push(path)
-  }
+  const drift = detectChangePlanDrift(plan, options.contents)
   if (drift.length === 0) linesOut.push('(none)')
-  else linesOut.push(...[...new Set(drift)].sort(compareStrings).map((path) => `! ${absolute(options.repositoryRoot, path)}`))
+  else linesOut.push(...drift.map((path) => `! ${absolute(options.repositoryRoot, path)}`))
 
   linesOut.push('', 'Deletions:')
   if (plan.removals.length === 0) linesOut.push('(none)')

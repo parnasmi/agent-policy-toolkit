@@ -1,5 +1,5 @@
-import { readFile, readdir } from 'node:fs/promises'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { lstat, readFile, readdir, realpath } from 'node:fs/promises'
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 
 import { loadCatalog } from '../../catalog/load-catalog.js'
 import { loadBundles } from '../../catalog/load-bundles.js'
@@ -12,7 +12,7 @@ import type { ProjectionInput } from '../../adapters/types.js'
 import { resolvePolicy, type ResolvedPolicy } from '../../compiler/resolve-policy.js'
 import { migrateProject } from '../../compiler/migrations.js'
 import type { VirtualArtifact } from '../../domain/artifacts.js'
-import type { ChangePlan } from '../../domain/change-plan.js'
+import type { ChangePlan, SourceChange } from '../../domain/change-plan.js'
 import { PolicyError, type Diagnostic } from '../../domain/diagnostics.js'
 import { createChangePlan } from '../../planner/create-plan.js'
 import { sha256Utf8 } from '../../planner/hash.js'
@@ -58,6 +58,56 @@ export function absolutePlanPath(repositoryRoot: string, input: string): string 
     throw new Error('Change Plan path must be outside the consumer worktree')
   }
   return planPath
+}
+
+function outside(root: string, candidate: string): boolean {
+  const offset = relative(root, candidate)
+  return offset === '..' || offset.startsWith(`..${sep}`) || isAbsolute(offset)
+}
+
+async function nearestExistingDirectory(input: string): Promise<{ readonly lexical: string; readonly real: string }> {
+  let cursor = input
+  while (true) {
+    try {
+      const metadata = await lstat(cursor)
+      if (!metadata.isDirectory()) throw new Error(`Plan parent is not a directory: ${cursor}`)
+      return { lexical: cursor, real: await realpath(cursor) }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      const parent = dirname(cursor)
+      if (parent === cursor) throw error
+      cursor = parent
+    }
+  }
+}
+
+/** Resolve a reviewed plan without allowing worktree paths or symlink escapes. */
+export async function validateExternalPlanPath(repositoryRoot: string, input: string): Promise<string> {
+  if (input.length === 0 || !isAbsolute(input)) {
+    throw new Error('Change Plan path must be an explicit absolute path outside the consumer worktree')
+  }
+  const rootLexical = resolve(repositoryRoot)
+  const rootReal = await realpath(repositoryRoot)
+  const target = resolve(input)
+  if (!outside(rootLexical, target) || !outside(rootReal, target)) {
+    throw new Error('Change Plan path must be outside the consumer worktree')
+  }
+
+  const existingParent = await nearestExistingDirectory(dirname(target))
+  const suffix = relative(existingParent.lexical, dirname(target))
+  const resolvedParent = resolve(existingParent.real, suffix)
+  const resolvedTarget = resolve(resolvedParent, basename(target))
+  if (!outside(rootReal, resolvedTarget)) {
+    throw new Error('Change Plan path resolves inside the consumer worktree')
+  }
+  try {
+    const metadata = await lstat(target)
+    if (metadata.isSymbolicLink()) throw new Error('Change Plan path must not be a symbolic link')
+    if (metadata.isDirectory()) throw new Error('Change Plan path must name a file')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+  return target
 }
 
 async function text(path: string): Promise<string | undefined> {
@@ -113,14 +163,76 @@ export function hasManagedRegion(content: string): boolean {
 async function sourceHash(
   root: string,
   sourcePaths: readonly string[],
+  overrides: ReadonlyMap<string, string> = new Map(),
 ): Promise<string> {
   const entries: Array<readonly [string, string]> = []
   for (const path of [...sourcePaths].sort(compareStrings)) {
-    const contents = await readText(root, path)
+    const contents = overrides.get(path) ?? await readText(root, path)
     if (contents === undefined) throw policyError('MISSING_POLICY_SOURCE', `Missing canonical source ${path}`, path)
     entries.push([path, contents])
   }
   return sha256Utf8(JSON.stringify(entries))
+}
+
+export interface BundleSelectionPreparation {
+  readonly sourceChanges: readonly SourceChange[]
+  readonly overrides: ReadonlyMap<string, string>
+}
+
+function replaceBundleField(source: string, selected: readonly string[]): string | undefined {
+  const field = /^([ \t]*)bundles[ \t]*:[ \t]*(.*?)(\r?\n|$)/m.exec(source)
+  if (field === null || field.index === undefined) return undefined
+  const indentation = field[1] ?? ''
+  const value = field[2] ?? ''
+  const lineEnding = field[3] ?? ''
+  const newline = lineEnding.length === 0
+    ? source.match(/\r?\n/)?.[0] ?? '\n'
+    : lineEnding
+  let replacementEnd = field.index + field[0].length
+  if (value.trim().length === 0) {
+    let cursor = replacementEnd
+    while (cursor < source.length) {
+      const lineEnd = source.indexOf('\n', cursor)
+      const end = lineEnd === -1 ? source.length : lineEnd + 1
+      const line = source.slice(cursor, end).replace(/\r?\n$/, '')
+      const indentation = /^([ \t]*)/.exec(line)?.[1] ?? ''
+      if (line.trim().length === 0 || indentation.length > (field[1] ?? '').length) {
+        replacementEnd = end
+        cursor = end
+        continue
+      }
+      break
+    }
+  }
+  const replacement = `${indentation}bundles: [${selected.join(', ')}]${newline}`
+  return `${source.slice(0, field.index)}${replacement}${source.slice(replacementEnd)}`
+}
+
+/** Convert an explicit Bundle Selection into a reviewed canonical manifest change. */
+export async function prepareBundleSelection(
+  context: CommandContext,
+  bundles: readonly string[],
+): Promise<BundleSelectionPreparation> {
+  const source = await loadProjectPolicy(context.repositoryRoot)
+  const current = await readText(context.repositoryRoot, source.path)
+  if (current === undefined) throw policyError('MISSING_POLICY_SOURCE', `Missing canonical source ${source.path}`, source.path)
+  const selected = bundles.filter((id) => id !== 'core')
+  if (JSON.stringify(source.bundles) === JSON.stringify(selected)) {
+    return { sourceChanges: [], overrides: new Map() }
+  }
+  const content = replaceBundleField(current, selected)
+  if (content === undefined) {
+    throw policyError('MISSING_BUNDLE_SELECTION', `Canonical source has no bundles field: ${source.path}`, source.path)
+  }
+  return {
+    sourceChanges: [{
+      path: source.path,
+      content,
+      sha256: sha256Utf8(content),
+      operation: 'replace',
+    }],
+    overrides: new Map([[source.path, content]]),
+  }
 }
 
 function policyWithBundles(
@@ -157,9 +269,10 @@ async function existingArtifacts(
 export async function compileCodex(
   context: CommandContext,
   requestedBundles?: readonly string[],
+  sourceOverrides: ReadonlyMap<string, string> = new Map(),
 ): Promise<CompiledCodexProjection> {
   const project = policyWithBundles(await loadProjectPolicy(context.repositoryRoot), requestedBundles)
-  const manifestSource = await readText(context.repositoryRoot, project.path)
+  const manifestSource = sourceOverrides.get(project.path) ?? await readText(context.repositoryRoot, project.path)
   if (manifestSource === undefined) throw policyError('MISSING_POLICY_SOURCE', `Missing canonical source ${project.path}`, project.path)
   migrateProject(manifestSource, 'v1')
   if (project.toolkitVersion !== context.toolkitVersion) {
@@ -174,7 +287,7 @@ export async function compileCodex(
   const resolvedPolicy = resolvePolicy({ rules: catalog.rules, bundles }, project)
   throwDiagnostics(resolvedPolicy.diagnostics)
   const sourcePaths = [project.path, ...project.overlayPaths]
-  const canonicalSourceHash = await sourceHash(context.repositoryRoot, sourcePaths)
+  const canonicalSourceHash = await sourceHash(context.repositoryRoot, sourcePaths, sourceOverrides)
   const existing = await existingArtifacts(context.repositoryRoot, resolvedPolicy)
   const input: ProjectionInput = {
     toolkitVersion: context.toolkitVersion,
@@ -200,6 +313,7 @@ export async function saveProjectionPlan(
   desiredArtifacts: readonly VirtualArtifact[],
   removals: readonly string[] = [],
   diagnostics: readonly Diagnostic[] = [],
+  sourceChanges: readonly SourceChange[] = [],
 ): Promise<ChangePlan> {
   return createChangePlan({
     command,
@@ -208,13 +322,15 @@ export async function saveProjectionPlan(
     planPath: absolutePlanPath(context.repositoryRoot, planPathInput),
     sourcePaths,
     desiredArtifacts,
+    sourceChanges,
     removals,
     diagnostics,
   })
 }
 
-export async function readChangePlan(path: string): Promise<ChangePlan> {
-  const parsed: unknown = JSON.parse(await readFile(path, 'utf8'))
+export async function readChangePlan(repositoryRoot: string, path: string): Promise<ChangePlan> {
+  const planPath = await validateExternalPlanPath(repositoryRoot, path)
+  const parsed: unknown = JSON.parse(await readFile(planPath, 'utf8'))
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error('Change Plan must be a JSON object')
   }

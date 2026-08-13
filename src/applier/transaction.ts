@@ -678,7 +678,7 @@ export async function applyTransaction(
           phase: 'install',
           path: entry.operation.relativePath,
         })
-        await beforeMutation?.()
+        if (!entry.operation.skipPreInstallRecheck) await beforeMutation?.()
         const prepared = await runStableOperation(entryParent(entry), {
           operation: 'hash',
           name: entryName(entry, entry.temporaryPath),

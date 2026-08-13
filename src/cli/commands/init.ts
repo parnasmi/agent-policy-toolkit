@@ -6,6 +6,7 @@ import type { CliArguments } from '../arguments.js'
 import {
   compileCodex,
   formatError,
+  prepareBundleSelection,
   saveProjectionPlan,
   type CommandContext,
 } from './common.js'
@@ -133,13 +134,17 @@ export async function runInit(
       }
       bundles = detected.bundles
     }
-    const compilation = await compileCodex(context, bundles)
+    const selection = await prepareBundleSelection(context, bundles)
+    const compilation = await compileCodex(context, bundles, selection.overrides)
     const plan = await saveProjectionPlan(
       context,
       'init',
       args.plan,
       compilation.sourcePaths,
       compilation.artifacts,
+      [],
+      [],
+      selection.sourceChanges,
     )
     io.stdout += `Change Plan saved: ${resolve(args.plan)}\n`
     io.stdout += `Planned ${plan.desiredArtifacts.length} generated artifact(s).\n`

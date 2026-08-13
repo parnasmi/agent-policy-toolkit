@@ -1,4 +1,4 @@
-import { access, constants, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { access, constants, cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -74,6 +74,38 @@ describe('policy lifecycle commands', () => {
       expect(diff.stdout.indexOf(join(resolvedRoot, 'AGENTS.md'))).toBeLessThan(diff.stdout.indexOf('+++'))
       expect(diff.stdout).toContain('Implement the explicit task without speculative scope expansion.')
       expect(await exists(join(root, 'AGENTS.md'))).toBe(false)
+
+      await writeFile(join(root, 'AGENTS.md'), 'externally created\n')
+      const artifactDriftDiff = realIo(root)
+      await expect(runCli(['diff', planPath], artifactDriftDiff)).resolves.toBe(1)
+      expect(artifactDriftDiff.stdout).toContain(`! ${join(process.cwd(), 'AGENTS.md')}`)
+      await rm(join(root, 'AGENTS.md'))
+
+      await writeFile(
+        join(root, '.agent-policy/policy.yaml'),
+        [
+          'schemaVersion: v1',
+          'toolkitVersion: 0.1.0-alpha.0',
+          'bundles: [typescript]',
+          'targets: [codex]',
+          '# changed after review',
+          '',
+        ].join('\n'),
+      )
+      const driftDiff = realIo(root)
+      await expect(runCli(['diff', planPath], driftDiff)).resolves.toBe(1)
+      expect(driftDiff.stdout).toContain('Drift:')
+      expect(driftDiff.stdout).toContain(`! ${join(process.cwd(), '.agent-policy/policy.yaml')}`)
+      await writeFile(
+        join(root, '.agent-policy/policy.yaml'),
+        [
+          'schemaVersion: v1',
+          'toolkitVersion: 0.1.0-alpha.0',
+          'bundles: [typescript]',
+          'targets: [codex]',
+          '',
+        ].join('\n'),
+      )
 
       const apply = realIo(root)
       await expect(runCli(['apply', planPath, '--yes'], apply)).resolves.toBe(0)
@@ -155,6 +187,107 @@ describe('policy lifecycle commands', () => {
       expect(confirmed).toBe(true)
       expect(io.stdout).toContain('Bundle Selection')
       expect(await exists(planPath)).toBe(false)
+    } finally {
+      process.chdir(previousCwd)
+    }
+  })
+
+  it('persists an explicit Bundle Selection in the reviewed source and check output', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'agent-policy-selection-'))
+    const root = join(parent, 'consumer')
+    const planPath = join(parent, 'selection-plan.json')
+    await mkdir(join(root, '.agent-policy'), { recursive: true })
+    await writeFile(
+      join(root, '.agent-policy/policy.yaml'),
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: [typescript]\ntargets: [codex]\n',
+    )
+    const previousCwd = process.cwd()
+    process.chdir(root)
+    try {
+      const init = realIo(root)
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core,react',
+        '--plan', planPath,
+      ], init)).resolves.toBe(0)
+      expect(await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8')).toContain('bundles: [typescript]')
+      const savedPlan = JSON.parse(await readFile(planPath, 'utf8')) as {
+        readonly sourceChanges?: readonly { readonly path: string; readonly content: string }[]
+      }
+      expect(savedPlan.sourceChanges).toEqual([
+        expect.objectContaining({ path: '.agent-policy/policy.yaml', content: expect.stringContaining('bundles: [react]') }),
+      ])
+
+      await expect(runCli(['apply', planPath, '--yes'], realIo(root))).resolves.toBe(0)
+      expect(await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8')).toContain('bundles: [react]')
+      await expect(runCli(['check'], realIo(root))).resolves.toBe(0)
+      expect(await exists(join(root, '.agents/skills/react/SKILL.md'))).toBe(true)
+      expect(await exists(join(root, '.agents/skills/typescript/SKILL.md'))).toBe(false)
+    } finally {
+      process.chdir(previousCwd)
+    }
+  })
+
+  it('prints complete unchanged policy text in a generated diff', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'agent-policy-full-diff-'))
+    const root = join(parent, 'consumer')
+    const planPath = join(parent, 'plan.json')
+    await mkdir(join(root, '.agent-policy'), { recursive: true })
+    await writeFile(
+      join(root, '.agent-policy/policy.yaml'),
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+    )
+    await writeFile(join(root, 'AGENTS.md'), '# Existing team instructions\n')
+    const previousCwd = process.cwd()
+    process.chdir(root)
+    try {
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core',
+        '--plan', planPath,
+      ], realIo(root))).resolves.toBe(0)
+      const diff = realIo(root)
+      await expect(runCli(['diff', planPath], diff)).resolves.toBe(0)
+      expect(diff.stdout).toContain('# Existing team instructions')
+      expect(diff.stdout).toContain('Implement the explicit task without speculative scope expansion.')
+    } finally {
+      process.chdir(previousCwd)
+    }
+  })
+
+  it('rejects relative, in-worktree, and symlinked plan paths for diff and apply', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'agent-policy-plan-paths-'))
+    const root = join(parent, 'consumer')
+    const planPath = join(parent, 'plan.json')
+    await mkdir(join(root, '.agent-policy'), { recursive: true })
+    await writeFile(
+      join(root, '.agent-policy/policy.yaml'),
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+    )
+    const previousCwd = process.cwd()
+    process.chdir(root)
+    try {
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core',
+        '--plan', planPath,
+      ], realIo(root))).resolves.toBe(0)
+      const relativePlan = '../plan.json'
+      await expect(runCli(['diff', relativePlan], realIo(root))).resolves.toBe(2)
+      await expect(runCli(['apply', relativePlan, '--yes'], realIo(root))).resolves.toBe(2)
+
+      const inWorktreePlan = join(root, 'inside-plan.json')
+      await cp(planPath, inWorktreePlan)
+      await expect(runCli(['diff', inWorktreePlan], realIo(root))).resolves.toBe(1)
+      await expect(runCli(['apply', inWorktreePlan, '--yes'], realIo(root))).resolves.toBe(1)
+
+      const symlinkedPlan = join(parent, 'symlinked-plan.json')
+      await symlink(planPath, symlinkedPlan)
+      await expect(runCli(['diff', symlinkedPlan], realIo(root))).resolves.toBe(1)
+      await expect(runCli(['apply', symlinkedPlan, '--yes'], realIo(root))).resolves.toBe(1)
     } finally {
       process.chdir(previousCwd)
     }

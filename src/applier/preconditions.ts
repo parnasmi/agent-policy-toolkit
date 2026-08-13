@@ -34,6 +34,8 @@ export interface PreparedOperation {
   readonly content?: string
   readonly existed: boolean
   readonly expectedCurrentSha256?: string
+  /** Source replacement is intentionally rechecked before backup, not while its backup is visible. */
+  readonly skipPreInstallRecheck?: boolean
 }
 
 export interface ValidatedApplication {
@@ -135,8 +137,11 @@ function validatePlanShape(plan: ChangePlan): ApplyFailure | undefined {
 
   const desiredPaths = plan.desiredArtifacts.map(({ path }) => path)
   const allTargets = [...desiredPaths, ...plan.removals]
+  const sourceChanges = plan.sourceChanges ?? []
+  const sourceChangePaths = sourceChanges.map(({ path }) => path)
   const allPaths = [
     ...Object.keys(plan.sourceHashes),
+    ...sourceChangePaths,
     ...allTargets,
     ...Object.keys(plan.currentArtifactHashes),
     ...Object.keys(plan.currentManagedRegionHashes ?? {}),
@@ -146,8 +151,25 @@ function validatePlanShape(plan: ChangePlan): ApplyFailure | undefined {
       return failure('invalid-plan', `Change Plan path is not canonical: ${path}`, [path])
     }
   }
+  if (new Set(sourceChangePaths).size !== sourceChangePaths.length) {
+    return failure('invalid-plan', 'Change Plan contains duplicate canonical source changes', sourceChangePaths)
+  }
+  for (const source of sourceChanges) {
+    if (plan.sourceHashes[source.path] === undefined) {
+      return failure('invalid-plan', `Source change is not bound to a canonical source: ${source.path}`, [source.path])
+    }
+    if (source.operation !== 'create' && source.operation !== 'replace') {
+      return failure('invalid-plan', `Unsupported canonical source operation: ${source.path}`, [source.path])
+    }
+    if (source.sha256 !== sha256Utf8(source.content)) {
+      return failure('invalid-plan', `Canonical source hash mismatch for ${source.path}`, [source.path])
+    }
+  }
   if (new Set(allTargets).size !== allTargets.length) {
     return failure('invalid-plan', 'Change Plan contains duplicate targets', allTargets)
+  }
+  if (sourceChangePaths.some((path) => allTargets.includes(path))) {
+    return failure('invalid-plan', 'Canonical source changes cannot overlap generated or removed targets', sourceChangePaths)
   }
   for (const artifact of plan.desiredArtifacts) {
     if (artifact.operation === 'delete') {
@@ -207,6 +229,7 @@ async function resolveEveryPath(
   const resolved = new Map<string, string>()
   const paths = [
     ...Object.keys(plan.sourceHashes),
+    ...(plan.sourceChanges ?? []).map(({ path }) => path),
     ...plan.desiredArtifacts.map(({ path }) => path),
     ...plan.removals,
     ...Object.keys(plan.currentArtifactHashes),
@@ -346,6 +369,27 @@ export async function revalidatePreconditions(
       targetPath,
       existed: true,
       expectedCurrentSha256: plan.currentArtifactHashes[path],
+    })
+  }
+
+  // Install canonical source replacements last. The transaction rechecks the
+  // reviewed preconditions between each operation; keeping source mutation at
+  // the end means those checks never observe our own in-flight source write.
+  for (const source of [...(plan.sourceChanges ?? [])].sort((left, right) =>
+    compareStrings(left.path, right.path))) {
+    const targetPath = resolved.get(source.path) ?? ''
+    const current = await readCurrent(targetPath)
+    const expectedHash = plan.sourceHashes[source.path]
+    if (expectedHash === undefined || current === undefined || sha256Utf8(current) !== expectedHash) {
+      return failure('source-drift', `Canonical policy source changed after review: ${source.path}`, [source.path])
+    }
+    operations.push({
+      relativePath: source.path,
+      targetPath,
+      content: source.content,
+      existed: true,
+      expectedCurrentSha256: expectedHash,
+      skipPreInstallRecheck: true,
     })
   }
 

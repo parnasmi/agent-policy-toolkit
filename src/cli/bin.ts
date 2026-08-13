@@ -4,11 +4,12 @@ import { access, readFile, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 
 import { runCli, type CliIo } from './main.js'
+import { confirmInTerminal } from './terminal-confirm.js'
 
 const io: CliIo = {
   stdout: '',
   stderr: '',
-  confirm: async () => false,
+  confirm: confirmInTerminal,
   fs: {
     readFile: async (path) => readFile(path, 'utf8'),
     writeFile,

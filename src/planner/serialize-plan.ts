@@ -1,5 +1,5 @@
 import type { VirtualArtifact } from '../domain/artifacts.js'
-import type { ChangePlan } from '../domain/change-plan.js'
+import type { ChangePlan, SourceChange } from '../domain/change-plan.js'
 import { sortDiagnostics, type Diagnostic } from '../domain/diagnostics.js'
 import { sha256Utf8 } from './hash.js'
 import { normalizeArtifactPath } from './inspect.js'
@@ -26,6 +26,15 @@ function canonicalArtifact(artifact: VirtualArtifact): VirtualArtifact {
   }
 }
 
+function canonicalSourceChange(source: SourceChange): SourceChange {
+  return {
+    path: normalizeArtifactPath(source.path),
+    content: source.content,
+    sha256: source.sha256,
+    operation: source.operation,
+  }
+}
+
 function canonicalDiagnostic(diagnostic: Diagnostic): Diagnostic {
   return {
     code: diagnostic.code,
@@ -44,6 +53,13 @@ function canonicalDocument(plan: SerializableChangePlan, includeHash: boolean): 
     toolkitVersion: plan.toolkitVersion,
     repositoryRootFingerprint: plan.repositoryRootFingerprint,
     sourceHashes: sortedRecord(plan.sourceHashes),
+    ...(plan.sourceChanges === undefined
+      ? {}
+      : {
+          sourceChanges: [...plan.sourceChanges]
+            .map(canonicalSourceChange)
+            .sort((left, right) => compareStrings(left.path, right.path)),
+        }),
     currentArtifactHashes: sortedRecord(plan.currentArtifactHashes),
     ...(plan.currentManagedRegionHashes === undefined
       ? {}

@@ -1,7 +1,7 @@
-import { resolve } from 'node:path'
+import { isAbsolute, resolve } from 'node:path'
 
 import type { CliIo } from '../main.js'
-import type { CliArguments } from '../arguments.js'
+import { CliUsageError, type CliArguments } from '../arguments.js'
 import { applyPlan } from '../../applier/apply-plan.js'
 import {
   formatError,
@@ -20,8 +20,11 @@ export async function runApply(
   if (args.target.length > 0 || args.bundles.length > 0 || args.generated) {
     throw new Error('apply accepts only a Change Plan path and --yes')
   }
+  if (!isAbsolute(args.positionals[0])) {
+    throw new CliUsageError('Change Plan path must be an explicit absolute path outside the consumer worktree')
+  }
   try {
-    const plan = await readChangePlan(args.positionals[0])
+    const plan = await readChangePlan(context.repositoryRoot, args.positionals[0])
     if (!args.yes && !(await io.confirm('Apply this reviewed Change Plan?'))) {
       io.stderr += 'Application was not confirmed. Pass --yes for non-interactive application.\n'
       return 1

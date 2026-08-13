@@ -70,7 +70,13 @@ export async function runCheck(
     })
     if (stale.length > 0) {
       io.stdout += '\nUnexpected generated artifacts:\n'
-      io.stdout += stale.map(({ path }) => `! ${resolve(context.repositoryRoot, ...path.split('/'))}`).join('\n') + '\n'
+      for (const file of stale) {
+        io.stdout += `! ${resolve(context.repositoryRoot, ...file.path.split('/'))}\n`
+        io.stdout += `--- ${resolve(context.repositoryRoot, ...file.path.split('/'))} (unexpected generated)\n`
+        io.stdout += file.content.length === 0
+          ? '-\n'
+          : `${file.content.replace(/\r\n/g, '\n').split('\n').map((line) => `-${line}`).join('\n')}\n`
+      }
     }
     return 1
   } catch (error) {

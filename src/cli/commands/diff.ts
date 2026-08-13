@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { isAbsolute } from 'node:path'
 
 import type { CliIo } from '../main.js'
-import type { CliArguments } from '../arguments.js'
-import { formatChangePlanDiff } from '../format-diff.js'
+import { CliUsageError, type CliArguments } from '../arguments.js'
+import { detectChangePlanDrift, formatChangePlanDiff } from '../format-diff.js'
+import { resolveConfinedPath } from '../../planner/inspect.js'
 import {
   formatError,
   readChangePlan,
@@ -13,8 +14,9 @@ import {
 async function snapshot(context: CommandContext, paths: readonly string[]): Promise<ReadonlyMap<string, string | undefined>> {
   const values = new Map<string, string | undefined>()
   for (const path of paths) {
+    const target = await resolveConfinedPath(context.repositoryRoot, path)
     try {
-      values.set(path, await readFile(resolve(context.repositoryRoot, ...path.split('/')), 'utf8'))
+      values.set(path, await readFile(target.path, 'utf8'))
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       values.set(path, undefined)
@@ -34,10 +36,14 @@ export async function runDiff(
   if (args.positionals.length !== 1 || args.positionals[0] === undefined || args.plan !== undefined) {
     throw new Error('diff requires exactly one Change Plan path')
   }
+  if (!isAbsolute(args.positionals[0])) {
+    throw new CliUsageError('Change Plan path must be an explicit absolute path outside the consumer worktree')
+  }
   try {
-    const plan = await readChangePlan(args.positionals[0])
+    const plan = await readChangePlan(context.repositoryRoot, args.positionals[0])
     const paths = [
       ...Object.keys(plan.sourceHashes),
+      ...(plan.sourceChanges ?? []).map(({ path }) => path),
       ...plan.desiredArtifacts.map(({ path }) => path),
       ...plan.removals,
     ]
@@ -46,7 +52,7 @@ export async function runDiff(
       repositoryRoot: context.repositoryRoot,
       contents,
     })
-    return 0
+    return detectChangePlanDrift(plan, contents).length === 0 ? 0 : 1
   } catch (error) {
     io.stderr += `${formatError(error)}\n`
     return 1

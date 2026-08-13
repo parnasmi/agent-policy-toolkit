@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import type { VirtualArtifact } from '../domain/artifacts.js'
-import type { ChangePlan } from '../domain/change-plan.js'
+import type { ChangePlan, SourceChange } from '../domain/change-plan.js'
 import { sortDiagnostics, type Diagnostic } from '../domain/diagnostics.js'
 import { sha256Utf8 } from './hash.js'
 import {
@@ -31,6 +31,8 @@ export interface PlanRequest {
   readonly planPath: string
   /** Canonical source files, relative to repositoryRoot. */
   readonly sourcePaths?: readonly string[]
+  /** Reviewed replacements for canonical sources. These are applied atomically with artifacts. */
+  readonly sourceChanges?: readonly SourceChange[]
   /** Reviewed virtual output from an adapter. */
   readonly desiredArtifacts: readonly VirtualArtifact[]
   readonly removals?: readonly string[]
@@ -139,6 +141,23 @@ export async function createChangePlan(request: PlanRequest): Promise<ChangePlan
     const sourcePaths = (request.sourcePaths ?? []).map(normalizeArtifactPath)
     assertUnique(sourcePaths, 'canonical sources')
 
+    const sourceChanges = (request.sourceChanges ?? []).map((source) => ({
+      ...source,
+      path: normalizeArtifactPath(source.path),
+    }))
+    assertUnique(sourceChanges.map(({ path }) => path), 'canonical source changes')
+    for (const source of sourceChanges) {
+      if (!sourcePaths.includes(source.path)) {
+        throw new Error(`Source change is not a declared canonical source: ${source.path}`)
+      }
+      if (source.operation !== 'create' && source.operation !== 'replace') {
+        throw new Error(`Unsupported canonical source operation for ${source.path}`)
+      }
+      if (source.sha256 !== sha256Utf8(source.content)) {
+        throw new Error(`Canonical source hash mismatch for ${source.path}`)
+      }
+    }
+
     const desired = request.desiredArtifacts.map((candidate) => ({
       ...candidate,
       path: normalizeArtifactPath(candidate.path),
@@ -149,6 +168,10 @@ export async function createChangePlan(request: PlanRequest): Promise<ChangePlan
     const removals = [...explicitRemovals, ...deleteArtifacts.map(({ path }) => path)]
     const targets = [...projectedArtifacts.map(({ path }) => path), ...removals]
     assertUnique(targets, 'plan targets')
+    const sourceChangePaths = sourceChanges.map(({ path }) => path)
+    if ([...new Set([...sourceChangePaths, ...targets])].length !== sourceChangePaths.length + targets.length) {
+      throw new Error('Canonical source changes cannot overlap generated or removed targets')
+    }
 
     for (const path of [...sourcePaths, ...targets]) {
       await resolveConfinedPath(repositoryRoot, path)
@@ -208,6 +231,7 @@ export async function createChangePlan(request: PlanRequest): Promise<ChangePlan
       toolkitVersion: request.toolkitVersion,
       repositoryRootFingerprint: sha256Utf8(repositoryRoot),
       sourceHashes,
+      ...(sourceChanges.length === 0 ? {} : { sourceChanges }),
       currentArtifactHashes,
       currentManagedRegionHashes,
       desiredArtifacts: plannedArtifacts,
