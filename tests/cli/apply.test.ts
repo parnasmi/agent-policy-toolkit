@@ -703,6 +703,33 @@ describe('transactional plan application', () => {
     expect(result.message).toMatch(/backup.*(?:missing|unavailable|could not verify|not present)/i)
   })
 
+  it('reports a retained backup as unverifiable when baseline capture is incomplete', async () => {
+    const { parent, root } = await sandbox()
+    const previous = generated('old\n')
+    await writeFile(join(root, 'owned.md'), previous)
+    const reviewed = await plan(parent, root, [artifact('owned.md', generated('reviewed\n'))])
+    let statCalls = 0
+    const hooks: TransactionHooks = {
+      failStableOperation: (operation) => operation === 'stat' && ++statCalls === 1,
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    if (result.ok) throw new Error('expected incomplete-baseline transaction failure')
+    const backup = (await readdir(root)).find((name) => name.endsWith('.backup'))
+    if (backup === undefined) throw new Error('expected retained original backup')
+    const backupPath = join(root, backup)
+    expect(result.message).toContain(backupPath)
+    expect(result.message).toMatch(/backup.*(?:retained|preserved).*unverifiable/i)
+    expect(result.message).not.toMatch(/verified at reporting time/i)
+    expect(await readFile(backupPath, 'utf8')).toBe(previous)
+  })
+
   it('preserves a concurrent target that appears before backup restoration', async () => {
     const { parent, root } = await sandbox()
     const previous = generated('old\n')

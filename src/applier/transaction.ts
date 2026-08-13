@@ -551,12 +551,16 @@ async function describeBackupRetention(entry: TransactionEntry): Promise<string>
     }
     const content = await readFile(backupPath, 'utf8')
     const currentHash = sha256Utf8(content)
-    const identityMatches = entry.backupDevice === undefined
-      || (
-        metadata.dev === entry.backupDevice
-        && metadata.ino === entry.backupInode
-      )
-    const bytesMatch = entry.backupHash === undefined || currentHash === entry.backupHash
+    const missingBaseline: string[] = []
+    if (entry.backupDevice === undefined) missingBaseline.push('device')
+    if (entry.backupInode === undefined) missingBaseline.push('inode')
+    if (entry.backupHash === undefined) missingBaseline.push('hash')
+    if (missingBaseline.length > 0) {
+      return `${entry.operation.relativePath}: original backup retained at ${backupPath}; backup retention is unverifiable because the baseline ${missingBaseline.join(', ')} was unavailable`
+    }
+    const identityMatches = metadata.dev === entry.backupDevice
+      && metadata.ino === entry.backupInode
+    const bytesMatch = currentHash === entry.backupHash
     if (identityMatches && bytesMatch) {
       return `${entry.operation.relativePath}: original backup retained at ${backupPath}; backup preserved at the same path (verified at reporting time)`
     }
@@ -647,13 +651,13 @@ export async function applyTransaction(
         const backupIdentity = await runStableOperation(entryParent(entry), {
           operation: 'stat',
           name: entryName(entry, entry.backupPath),
-        })
+        }, hooks)
         entry.backupDevice = backupIdentity.fileDevice
         entry.backupInode = backupIdentity.fileInode
         const backedUp = await runStableOperation(entryParent(entry), {
           operation: 'hash',
           name: entryName(entry, entry.backupPath),
-        })
+        }, hooks)
         entry.backupHash = backedUp.hash
         if (backedUp.hash !== entry.operation.expectedCurrentSha256) {
           await restoreBackupWithoutOverwrite(entry, hooks, noteRecoveryCleanupFailure)
