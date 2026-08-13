@@ -4,12 +4,13 @@ import { access, readFile, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 
 import { runCli, type CliIo } from './main.js'
-import { confirmInTerminal } from './terminal-confirm.js'
+import { chooseReconciliationInTerminal, confirmInTerminal } from './terminal-confirm.js'
 
 const io: CliIo = {
   stdout: '',
   stderr: '',
   confirm: confirmInTerminal,
+  choose: async (message) => chooseReconciliationInTerminal(message),
   fs: {
     readFile: async (path) => readFile(path, 'utf8'),
     writeFile,

@@ -13,7 +13,11 @@ export interface ProjectManifest extends ProjectPolicy {
 export interface ProjectPolicyLock {
   readonly schemaVersion: ProjectSchemaVersion
   readonly toolkitVersion: string
-  readonly sourceHashes: Readonly<Record<string, string>>
+  readonly adapterKnowledgeVersion: string
+  readonly canonicalSourceHash: string
+  readonly managedArtifactHashes: Readonly<Record<string, string>>
+  readonly generatedBy: '@agent-policy/agent-policy-toolkit'
+  readonly artifactHash: string
 }
 
 /** The byte-preserving output of a pure project-schema migration. */

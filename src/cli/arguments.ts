@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util'
 
 export type CliCommand = 'init' | 'diff' | 'apply' | 'check' | 'remove'
+export type ReconciliationChoice = 'adopt' | 'regenerate' | 'abort'
 
 export class CliUsageError extends Error {
   constructor(message: string) {
@@ -18,6 +19,7 @@ export interface CliArguments {
   readonly plan?: string
   readonly yes: boolean
   readonly generated: boolean
+  readonly reconcile?: ReconciliationChoice
 }
 
 function strings(value: unknown): string[] {
@@ -47,6 +49,7 @@ export function parseCliArguments(argv: readonly string[]): CliArguments {
         plan: { type: 'string' },
         yes: { type: 'boolean' },
         generated: { type: 'boolean' },
+        reconcile: { type: 'string' },
       },
       strict: true,
       allowPositionals: true,
@@ -56,6 +59,16 @@ export function parseCliArguments(argv: readonly string[]): CliArguments {
   }
 
   const command = parsed.positionals[0]
+  const reconcileValue = parsed.values.reconcile
+  if (
+    reconcileValue !== undefined
+    && reconcileValue !== 'adopt'
+    && reconcileValue !== 'regenerate'
+    && reconcileValue !== 'abort'
+  ) {
+    throw new CliUsageError('--reconcile must be adopt, regenerate, or abort')
+  }
+
   return {
     command,
     positionals: parsed.positionals.slice(command === undefined ? 0 : 1),
@@ -65,6 +78,7 @@ export function parseCliArguments(argv: readonly string[]): CliArguments {
     plan: typeof parsed.values.plan === 'string' ? parsed.values.plan : undefined,
     yes: parsed.values.yes === true,
     generated: parsed.values.generated === true,
+    ...(reconcileValue === undefined ? {} : { reconcile: reconcileValue }),
   }
 }
 

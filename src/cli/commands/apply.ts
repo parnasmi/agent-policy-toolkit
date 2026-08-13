@@ -4,10 +4,14 @@ import type { CliIo } from '../main.js'
 import { CliUsageError, type CliArguments } from '../arguments.js'
 import { applyPlan } from '../../applier/apply-plan.js'
 import {
+  chooseReconciliation,
   formatError,
+  reconciliationPlanPath,
   readChangePlan,
+  saveRegenerationPlan,
   type CommandContext,
 } from './common.js'
+import { reconcileDrift } from '../../applier/reconcile.js'
 
 export async function runApply(
   args: CliArguments,
@@ -34,6 +38,37 @@ export async function runApply(
       toolkitVersion: context.toolkitVersion,
     })
     if (!result.ok) {
+      if (result.code === 'source-drift' || result.code === 'artifact-drift' || result.code === 'ownership-drift') {
+        const artifactPath = result.paths[0] ?? 'unknown artifact'
+        const choice = await chooseReconciliation(
+          args,
+          io,
+          `Drift detected at ${artifactPath}; choose reconciliation`,
+        )
+        const proposal = reconcileDrift(choice, {
+          artifactPath,
+          currentContent: '',
+        })
+        if (proposal.kind === 'abort') {
+          io.stderr += 'Drift reconciliation aborted; no files were changed.\n'
+          return 1
+        }
+        if (proposal.kind === 'replan' && proposal.choice === 'regenerate') {
+          try {
+            const regeneratedPath = reconciliationPlanPath(args.positionals[0])
+            await saveRegenerationPlan(context, plan, regeneratedPath, result.code !== 'source-drift')
+            io.stdout += `Regeneration Change Plan saved: ${regeneratedPath}\n`
+            io.stdout += 'No files were changed. Apply this reviewed plan, then retry the original operation.\n'
+          } catch (regenerationError) {
+            io.stderr += `${formatError(regenerationError)}\n`
+          }
+          return 1
+        }
+        io.stderr += proposal.kind === 'unresolved'
+          ? 'Drift remains unresolved; no files were changed.\n'
+          : 'Adoption requires a representable canonical-source proposal; no files were changed.\n'
+        return 1
+      }
       io.stderr += `Apply failed (${result.code}): ${result.message}\n`
       if (result.paths.length > 0) io.stderr += `Paths: ${result.paths.join(', ')}\n`
       return 1

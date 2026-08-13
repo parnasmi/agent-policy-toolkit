@@ -96,6 +96,19 @@ export function applyOverlays(
       continue
     }
 
+    if (
+      (directive.operation === 'addendum' || directive.operation === 'replace-with')
+      && (typeof directive.content !== 'string' || directive.content.trim().length === 0)
+    ) {
+      diagnostics.push(diagnostic(
+        'MISSING_OVERLAY_CONTENT',
+        `Overlay directive ${directive.operation} for ${target.id} requires non-empty content`,
+        path,
+        target.id,
+      ))
+      continue
+    }
+
     if (!allowsProjectOverlay(target)) {
       diagnostics.push(diagnostic(
         'OVERLAY_OVERRIDE_FORBIDDEN',

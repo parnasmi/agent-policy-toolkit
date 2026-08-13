@@ -130,6 +130,7 @@ describe('removal and drift release contracts', () => {
     )
     const unmanaged = '# Human-owned instructions\n'
     await writeFile(join(root, 'AGENTS.md'), unmanaged)
+    await rm(join(root, '.agents/skills/typescript/SKILL.md'))
     const planPath = join(parent, 'unmanaged-target-remove-plan.json')
 
     await withWorkingDirectory(root, async () => {

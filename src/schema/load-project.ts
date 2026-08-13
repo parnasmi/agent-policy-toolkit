@@ -3,8 +3,10 @@ import { isAbsolute, normalize, relative, resolve, sep } from 'node:path'
 
 import { PolicyError } from '../domain/diagnostics.js'
 import type { OverlayDirective, ProjectPolicy } from '../domain/policy.js'
+import type { ProjectPolicyLock } from './project-types.js'
 import { parseYamlDocument } from './frontmatter.js'
 import { validateDocument } from './validator.js'
+import { hasValidPolicyLockHash } from '../planner/policy-lock.js'
 
 interface ProjectPolicyManifest extends ProjectPolicy {
   readonly overlays?: readonly string[]
@@ -19,6 +21,33 @@ export interface ProjectPolicySource extends ProjectPolicy {
   readonly overlayPaths: readonly string[]
   readonly overlays: readonly OverlaySource[]
   readonly invariantsPath?: string
+}
+
+/** Load the generated lock when present; lock bytes are never treated as canonical policy. */
+export async function loadPolicyLock(root: string): Promise<ProjectPolicyLock | undefined> {
+  const repositoryRoot = resolve(root)
+  const policyDirectory = resolve(repositoryRoot, '.agent-policy')
+  const lockFile = resolveDeclaredFile(repositoryRoot, policyDirectory, 'policy.lock.json')
+  try {
+    await lstat(lockFile)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw error
+  }
+
+  const path = sourcePathFor(repositoryRoot, lockFile)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(await readDeclaredFile(repositoryRoot, policyDirectory, lockFile))
+  } catch (error) {
+    if (error instanceof PolicyError) throw error
+    throw policyError('INVALID_POLICY_LOCK', error instanceof Error ? error.message : 'Invalid policy lock JSON', path)
+  }
+  const lock = validateDocument<ProjectPolicyLock>('policy-lock-v1', parsed, path)
+  if (!hasValidPolicyLockHash(await readDeclaredFile(repositoryRoot, policyDirectory, lockFile))) {
+    throw policyError('INVALID_POLICY_LOCK_HASH', 'Generated policy lock hash does not match its contents', path)
+  }
+  return lock
 }
 
 function policyError(code: string, message: string, path: string): PolicyError {
@@ -183,12 +212,14 @@ export async function loadProjectPolicy(root: string): Promise<ProjectPolicySour
     manifestPath,
   )
   const invariants = await readOptionalInvariants(repositoryRoot, policyDirectory)
-  const overlayPaths = manifest.overlays ?? []
+  const declaredOverlayPaths = manifest.overlays ?? []
+  const overlayPaths: string[] = []
   const overlays: OverlaySource[] = []
 
-  for (const declaredPath of overlayPaths) {
+  for (const declaredPath of declaredOverlayPaths) {
     const overlayFile = resolveDeclaredFile(repositoryRoot, policyDirectory, declaredPath)
     const overlayPath = sourcePathFor(repositoryRoot, overlayFile)
+    overlayPaths.push(overlayPath)
     overlays.push({
       ...validateDocument<OverlayDirective>(
         'overlay-v1',

@@ -26,6 +26,10 @@ The first Codex foundation prerelease. This is experimental evaluation software,
 - Exact Managed Region byte preservation for non-final-newline and newline-only `AGENTS.md` inputs.
 - Published `docs/` and `CHANGELOG.md` files so installed-package documentation links remain usable.
 - Adapter Knowledge wording distinguishes directly contract-tested discovery from declared experimental profile values.
+- Overlay schemas accept canonical IDs and legacy `RULE_*` aliases, while content-bearing directives reject empty content.
+- Codex target selection is authoritative and initialization records any target addition as a reviewed manifest source change.
+- Generated `.agent-policy/policy.lock.json` records exact release/Adapter Knowledge versions and managed artifact hashes; removal reconciles stale Codex skills and lock state.
+- Interactive drift choices are wired to new reviewed external plans, and generated skill ownership accepts verified LF/CRLF variants.
 
 ### Support boundary
 

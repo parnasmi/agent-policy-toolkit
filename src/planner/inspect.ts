@@ -7,7 +7,7 @@ import {
   removeManagedRegion,
 } from '../adapters/codex/managed-region.js'
 import type { VirtualArtifact } from '../domain/artifacts.js'
-import { sha256Utf8 } from './hash.js'
+import { normalizeGeneratedLineEndings, sha256Utf8 } from './hash.js'
 
 export type ArtifactState =
   | 'clean'
@@ -70,11 +70,18 @@ function generatedOwnershipMarker(owner: string): string {
 }
 
 function hasGeneratedOwnershipHeader(content: string, owner: string): boolean {
+  const stable = content.replace(/\r\n/g, '\n')
   const marker = generatedOwnershipMarker(owner)
-  if (content.startsWith(marker)) return true
+  if (stable.startsWith(marker)) return true
 
-  const frontmatter = /^---\n[\s\S]*?\n---\n\n/.exec(content)
-  return frontmatter !== null && content.slice(frontmatter[0].length).startsWith(marker)
+  const frontmatter = /^---\n[\s\S]*?\n---\n\n/.exec(stable)
+  if (frontmatter !== null && stable.slice(frontmatter[0].length).startsWith(marker)) return true
+  try {
+    const parsed = JSON.parse(stable) as { readonly generatedBy?: unknown; readonly artifactHash?: unknown }
+    return parsed.generatedBy === owner && typeof parsed.artifactHash === 'string'
+  } catch {
+    return false
+  }
 }
 
 function isOutside(root: string, candidate: string): boolean {
@@ -171,7 +178,9 @@ export async function inspectArtifact(
     const withoutRegion = removeManagedRegion(currentContent) ?? currentContent
     return {
       path: normalized,
-      state: withoutRegion === artifact.content ? 'clean' : 'managed-drift',
+      state: normalizeGeneratedLineEndings(withoutRegion) === normalizeGeneratedLineEndings(artifact.content)
+        ? 'clean'
+        : 'managed-drift',
       currentContent,
       currentSha256,
       managedRegionSha256: sha256Utf8(currentRegion.content ?? ''),
@@ -179,7 +188,11 @@ export async function inspectArtifact(
   }
 
   if (artifact.operation !== 'managed-region') {
-    if (currentSha256 === artifact.sha256 && currentContent === artifact.content) {
+    if (
+      currentSha256 === artifact.sha256 && currentContent === artifact.content
+      || hasGeneratedOwnershipHeader(currentContent, artifact.owner)
+        && normalizeGeneratedLineEndings(currentContent) === normalizeGeneratedLineEndings(artifact.content)
+    ) {
       return { path: normalized, state: 'clean', currentContent, currentSha256 }
     }
     return {
@@ -202,7 +215,10 @@ export async function inspectArtifact(
   const managedRegionSha256 = sha256Utf8(currentRegion.content ?? '')
   return {
     path: normalized,
-    state: currentRegion.content === desiredRegion?.content ? 'clean' : 'managed-drift',
+    state: normalizeGeneratedLineEndings(currentRegion.content ?? '')
+      === normalizeGeneratedLineEndings(desiredRegion?.content ?? '')
+      ? 'clean'
+      : 'managed-drift',
     currentContent,
     currentSha256,
     managedRegionSha256,

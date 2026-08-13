@@ -30,7 +30,7 @@ export async function runDiff(
   io: CliIo,
   context: CommandContext,
 ): Promise<number> {
-  if (args.target.length > 0 || args.bundles.length > 0 || args.yes || args.generated) {
+  if (args.target.length > 0 || args.bundles.length > 0 || args.yes || args.generated || args.reconcile !== undefined) {
     throw new Error('diff accepts only one Change Plan path')
   }
   if (args.positionals.length !== 1 || args.positionals[0] === undefined || args.plan !== undefined) {

@@ -36,6 +36,33 @@ function diagnosticsFrom(action: () => unknown): readonly { path: string; messag
 }
 
 describe('canonical source schema validation', () => {
+  it('accepts canonical and legacy alias overlay targets', () => {
+    expect(validateDocument('overlay-v1', {
+      ruleId: 'RULE_TASK_FIDELITY',
+      operation: 'disable',
+      reason: 'The repository does not use this guidance.',
+    }, '.agent-policy/overlays/rules.yaml')).toMatchObject({ ruleId: 'RULE_TASK_FIDELITY' })
+    expect(validateDocument('overlay-v1', {
+      ruleId: 'core.task-fidelity',
+      operation: 'disable',
+      reason: 'The repository does not use this guidance.',
+    }, '.agent-policy/overlays/rules.yaml')).toMatchObject({ ruleId: 'core.task-fidelity' })
+  })
+
+  it.each(['addendum', 'replace-with'] as const)('requires non-empty %s content', (operation) => {
+    expect(() => validateDocument('overlay-v1', {
+      ruleId: 'core.task-fidelity',
+      operation,
+      reason: 'The repository has a narrower local contract.',
+    }, '.agent-policy/overlays/rules.yaml')).toThrow(PolicyError)
+    expect(() => validateDocument('overlay-v1', {
+      ruleId: 'core.task-fidelity',
+      operation,
+      reason: 'The repository has a narrower local contract.',
+      content: '   ',
+    }, '.agent-policy/overlays/rules.yaml')).toThrow(PolicyError)
+  })
+
   it('reports missing id in JSON-pointer order', () => {
     const diagnostics = diagnosticsFrom(() =>
       validateDocument('rule-v1', { ...validRule, id: undefined }, 'catalog/rules/core/task-fidelity.md'),

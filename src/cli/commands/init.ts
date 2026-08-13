@@ -3,11 +3,19 @@ import { resolve } from 'node:path'
 
 import type { CliIo } from '../main.js'
 import type { CliArguments } from '../arguments.js'
+import { reconcileDrift } from '../../applier/reconcile.js'
+import { inspectArtifact } from '../../planner/inspect.js'
+import { normalizeGeneratedLineEndings } from '../../planner/hash.js'
 import {
+  chooseReconciliation,
   compileCodex,
   formatError,
   prepareBundleSelection,
+  reconciliationPlanPath,
   saveProjectionPlan,
+  generatedOwnership,
+  hasManagedRegion,
+  readText,
   type CommandContext,
 } from './common.js'
 
@@ -111,6 +119,48 @@ function displayDetection(detection: Detection): string {
   return `${lines.join('\n')}\n`
 }
 
+async function planningDrift(
+  context: CommandContext,
+  artifacts: Awaited<ReturnType<typeof compileCodex>>['artifacts'],
+): Promise<{ readonly artifactPath: string; readonly currentContent: string } | undefined> {
+  const sourceHash = (content: string): string | undefined =>
+    /(?:Canonical source hash|canonicalSourceHash)["']?\s*:\s*["']?([0-9a-f]{64})/.exec(content)?.[1]
+  for (const artifact of [...artifacts].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0)) {
+    const current = await readText(context.repositoryRoot, artifact.path)
+    if (current === undefined || normalizeGeneratedLineEndings(current) === normalizeGeneratedLineEndings(artifact.content)) continue
+    if (artifact.operation === 'managed-region') {
+      try {
+        if (!hasManagedRegion(current)) continue
+      } catch {
+        return { artifactPath: artifact.path, currentContent: current }
+      }
+    } else if (!generatedOwnership(current)) {
+      return { artifactPath: artifact.path, currentContent: current }
+    }
+    const inspection = await inspectArtifact(context.repositoryRoot, artifact)
+    const expectedSourceHash = sourceHash(artifact.content)
+    const currentSourceHash = sourceHash(inspection.currentContent ?? '')
+    const sourceChanged = expectedSourceHash !== undefined
+      && currentSourceHash !== undefined
+      && expectedSourceHash !== currentSourceHash
+    const legacyOwned = inspection.state === 'managed-drift'
+      && currentSourceHash === undefined
+      && (artifact.operation === 'managed-region' || generatedOwnership(inspection.currentContent ?? ''))
+    const isUnmanagedReplacement = inspection.state === 'unmanaged' && artifact.operation !== 'managed-region'
+    if (
+      inspection.state === 'invalid-marker'
+      || isUnmanagedReplacement
+      || (inspection.state === 'managed-drift' && !sourceChanged && !legacyOwned)
+    ) {
+      return {
+        artifactPath: artifact.path,
+        currentContent: inspection.currentContent ?? '',
+      }
+    }
+  }
+  return undefined
+}
+
 export async function runInit(
   args: CliArguments,
   io: CliIo,
@@ -134,8 +184,37 @@ export async function runInit(
       }
       bundles = detected.bundles
     }
-    const selection = await prepareBundleSelection(context, bundles)
+    const selection = await prepareBundleSelection(context, bundles, 'codex')
     const compilation = await compileCodex(context, bundles, selection.overrides)
+    const drift = await planningDrift(context, compilation.artifacts)
+    if (drift !== undefined) {
+      const choice = await chooseReconciliation(args, io, `Drift detected at ${drift.artifactPath}; choose reconciliation`)
+      const proposal = reconcileDrift(choice, drift)
+      if (proposal.kind === 'abort') {
+        io.stderr += 'Drift reconciliation aborted; no plan was created.\n'
+        return 1
+      }
+      if (proposal.kind === 'replan' && proposal.choice === 'regenerate') {
+        const regeneratedPath = reconciliationPlanPath(args.plan)
+        const regenerated = await saveProjectionPlan(
+          context,
+          'init:regenerate',
+          regeneratedPath,
+          compilation.sourcePaths,
+          compilation.artifacts,
+          [],
+          [],
+          selection.sourceChanges,
+        )
+        io.stdout += `Regeneration Change Plan saved: ${regeneratedPath}\n`
+        io.stdout += `Planned ${regenerated.desiredArtifacts.length} generated artifact(s). Apply this reviewed plan after resolving drift.\n`
+        return 1
+      }
+      io.stderr += proposal.kind === 'unresolved'
+        ? 'Drift remains unresolved; no plan was created.\n'
+        : 'Adoption requires a representable canonical-source proposal; no plan was created.\n'
+      return 1
+    }
     const plan = await saveProjectionPlan(
       context,
       'init',

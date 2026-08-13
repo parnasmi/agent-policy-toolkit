@@ -39,7 +39,7 @@ export async function runCheck(
   io: CliIo,
   context: CommandContext,
 ): Promise<number> {
-  if (args.positionals.length > 0 || args.plan !== undefined || args.target.length > 0 || args.bundles.length > 0 || args.yes || args.generated) {
+  if (args.positionals.length > 0 || args.plan !== undefined || args.target.length > 0 || args.bundles.length > 0 || args.yes || args.generated || args.reconcile !== undefined) {
     throw new Error('check accepts no options or positional arguments')
   }
 

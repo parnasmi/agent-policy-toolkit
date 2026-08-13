@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "policy-lock-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "toolkitVersion",
+    "adapterKnowledgeVersion",
+    "canonicalSourceHash",
+    "managedArtifactHashes",
+    "generatedBy",
+    "artifactHash"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "v1" },
+    "toolkitVersion": { "type": "string", "minLength": 1 },
+    "adapterKnowledgeVersion": { "type": "string", "minLength": 1 },
+    "canonicalSourceHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "managedArtifactHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^(?:[A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+$": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "generatedBy": { "const": "@agent-policy/agent-policy-toolkit" },
+    "artifactHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

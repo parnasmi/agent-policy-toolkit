@@ -5,7 +5,10 @@
   "additionalProperties": false,
   "required": ["ruleId", "operation", "reason"],
   "properties": {
-    "ruleId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)+$" },
+    "ruleId": {
+      "type": "string",
+      "pattern": "^(?:[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)+|RULE_[A-Z0-9_]+)$"
+    },
     "operation": { "enum": ["disable", "addendum", "replace-with"] },
     "reason": { "type": "string", "minLength": 1 },
     "content": { "type": "string" },
@@ -16,5 +19,17 @@
         "^v[1-9][0-9]*$": { "type": "object", "additionalProperties": true }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["operation"],
+        "properties": { "operation": { "enum": ["addendum", "replace-with"] } }
+      },
+      "then": {
+        "required": ["content"],
+        "properties": { "content": { "type": "string", "pattern": ".*\\S.*" } }
+      }
+    }
+  ]
 }

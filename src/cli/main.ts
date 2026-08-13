@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url'
-import { parseCliArguments, requireCommand, type CliArguments } from './arguments.js'
+import { parseCliArguments, requireCommand, type CliArguments, type ReconciliationChoice } from './arguments.js'
 import { runApply } from './commands/apply.js'
 import { runCheck } from './commands/check.js'
 import { runDiff } from './commands/diff.js'
@@ -17,6 +17,8 @@ export interface CliIo {
   stdout: string
   stderr: string
   readonly confirm: (message: string) => Promise<boolean>
+  /** Present an explicit drift choice in interactive clients. */
+  readonly choose?: (message: string, choices: readonly ReconciliationChoice[]) => Promise<ReconciliationChoice>
   readonly fs: FileSystemPorts
 }
 
@@ -30,6 +32,8 @@ Usage:
   agent-policy check
   agent-policy remove --target codex --plan <absolute-plan-path>
   agent-policy remove --generated --plan <absolute-plan-path>
+
+Drift reconciliation: add --reconcile adopt|regenerate|abort, or choose interactively when supported.
 
 Commands create read-only reviewed plans until apply crosses the mutation boundary.
 --yes confirms reviewed application; it never confirms advisory Bundle Selection.

@@ -142,6 +142,24 @@ describe('overlay resolution', () => {
     ])
   })
 
+  it.each(['addendum', 'replace-with'] as const)('reports runtime-invalid empty %s content', (operation) => {
+    const result = applyOverlays(rules, [{
+      path: `.agent-policy/overlays/empty-${operation}.yaml`,
+      ruleId: 'RULE_CONFIGURABLE',
+      operation,
+      reason: 'The local contract is explicit.',
+      content: '   ',
+    }])
+
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'MISSING_OVERLAY_CONTENT',
+        path: `.agent-policy/overlays/empty-${operation}.yaml`,
+        ruleId: 'example.configurable',
+      }),
+    ])
+  })
+
   it.each(['disable', 'addendum', 'replace-with'] as const)(
     'rejects %s when the target policy excludes project overlays',
     (operation) => {
