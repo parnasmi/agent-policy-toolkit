@@ -131,7 +131,7 @@ describe('canonical source schema validation', () => {
     await mkdir(policyDir)
     await writeFile(
       join(policyDir, 'policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: [core]\ntargets: [codex]\noverlays: [missing-overlay.yaml]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: [core]\ntargets: [codex]\noverlays: [missing-overlay.yaml]\n',
     )
 
     await expect(loadProjectPolicy(root)).rejects.toBeInstanceOf(PolicyError)
@@ -144,7 +144,7 @@ describe('canonical source schema validation', () => {
     await mkdir(policyDir)
     await writeFile(
       join(policyDir, 'policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: [core]\ntargets: [codex]\noverlays: [../outside.yaml]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: [core]\ntargets: [codex]\noverlays: [../outside.yaml]\n',
     )
 
     await expect(loadProjectPolicy(root)).rejects.toBeInstanceOf(PolicyError)
@@ -157,7 +157,7 @@ describe('canonical source schema validation', () => {
     await mkdir(policyDir)
     await writeFile(
       join(policyDir, 'policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: [core]\ntargets: [codex]\noverlays: [overlay.yaml]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: [core]\ntargets: [codex]\noverlays: [overlay.yaml]\n',
     )
     await writeFile(outsideOverlay, 'ruleId: core.task-fidelity\noperation: disable\nreason: external\n')
     await symlink(outsideOverlay, join(policyDir, 'overlay.yaml'))
@@ -173,7 +173,7 @@ describe('canonical source schema validation', () => {
       join(policyDir, 'policy.yaml'),
       [
         'schemaVersion: v1',
-        'toolkitVersion: 0.1.0-alpha.0',
+        'toolkitVersion: 0.1.0-alpha.1',
         'bundles: [core]',
         'targets: [codex]',
         'profiles: { default: { concise: true } }',
@@ -200,7 +200,7 @@ describe('canonical source schema validation', () => {
     await mkdir(policyDir)
     await writeFile(
       join(policyDir, 'policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: []\ntargets: [codex]\n',
     )
     await writeFile(
       join(policyDir, 'invariants.yaml'),
@@ -231,7 +231,7 @@ describe('canonical source schema validation', () => {
     await mkdir(policyDir)
     await writeFile(
       join(policyDir, 'policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: []\ntargets: [codex]\n',
     )
     await writeFile(
       join(policyDir, 'invariants.yaml'),
@@ -249,7 +249,7 @@ describe('canonical source schema validation', () => {
     await mkdir(policyDir)
     await writeFile(
       join(policyDir, 'policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: []\ntargets: [codex]\n',
     )
     await writeFile(
       join(policyDir, 'invariants.yaml'),

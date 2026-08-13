@@ -13,7 +13,7 @@ import { createChangePlan } from '../../src/planner/create-plan.js'
 import { runCli, type CliIo } from '../../src/cli/main.js'
 
 const owner = '@agent-policy/agent-policy-toolkit'
-const toolkitVersion = '0.1.0-alpha.0'
+const toolkitVersion = '0.1.0-alpha.1'
 const start = `<!-- agent-policy:start owner=${owner} -->`
 const end = '<!-- agent-policy:end -->'
 const fixture = fileURLToPath(new URL('../fixtures/repositories/drifted', import.meta.url))
@@ -126,7 +126,7 @@ describe('removal and drift release contracts', () => {
     const { parent, root } = await copiedFixture()
     await writeFile(
       join(root, '.agent-policy/policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: []\ntargets: [codex]\n',
     )
     const unmanaged = '# Human-owned instructions\n'
     await writeFile(join(root, 'AGENTS.md'), unmanaged)

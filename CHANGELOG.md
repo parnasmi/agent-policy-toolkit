@@ -2,6 +2,12 @@
 
 All notable changes to Agent Policy Toolkit are documented here.
 
+## [0.1.0-alpha.1] - 2026-08-13
+
+### Fixed
+
+- `agent-policy check` no longer treats an arbitrary repository file that merely quotes the Managed Region marker pair as a toolkit-owned artifact. Managed Region detection is scoped to adapter-declared instruction entry files and lock-recorded managed artifact paths; fully generated files are still recognized by their generated ownership header. This fixes a reproducible dogfood defect where documentation quoting the markers (including the toolkit's own plan documents) caused `check` to fail with `Unexpected generated artifacts`.
+
 ## [0.1.0-alpha.0] - 2026-08-13
 
 The first Codex foundation prerelease. This is experimental evaluation software, not a stable cross-harness support release.

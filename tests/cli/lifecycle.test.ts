@@ -37,7 +37,7 @@ describe('policy lifecycle commands', () => {
     await mkdir(join(root, '.agent-policy'), { recursive: true })
     await writeFile(
       join(root, '.agent-policy/policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: []\ntargets: [codex]\n',
     )
     await writeFile(
       join(root, '.agent-policy/invariants.yaml'),
@@ -96,7 +96,7 @@ describe('policy lifecycle commands', () => {
       join(root, '.agent-policy/policy.yaml'),
       [
         'schemaVersion: v1',
-        'toolkitVersion: 0.1.0-alpha.0',
+        'toolkitVersion: 0.1.0-alpha.1',
         'bundles: [typescript]',
         'targets: [codex]',
         '',
@@ -142,7 +142,7 @@ describe('policy lifecycle commands', () => {
         join(root, '.agent-policy/policy.yaml'),
         [
           'schemaVersion: v1',
-          'toolkitVersion: 0.1.0-alpha.0',
+          'toolkitVersion: 0.1.0-alpha.1',
           'bundles: [typescript]',
           'targets: [codex]',
           '# changed after review',
@@ -157,7 +157,7 @@ describe('policy lifecycle commands', () => {
         join(root, '.agent-policy/policy.yaml'),
         [
           'schemaVersion: v1',
-          'toolkitVersion: 0.1.0-alpha.0',
+          'toolkitVersion: 0.1.0-alpha.1',
           'bundles: [typescript]',
           'targets: [codex]',
           '',
@@ -225,7 +225,7 @@ describe('policy lifecycle commands', () => {
     await mkdir(join(root, '.agent-policy'), { recursive: true })
     await writeFile(
       join(root, '.agent-policy/policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: []\ntargets: [codex]\n',
     )
     let confirmed = false
     const io = realIo(root, false, async () => {
@@ -256,7 +256,7 @@ describe('policy lifecycle commands', () => {
     await mkdir(join(root, '.agent-policy'), { recursive: true })
     await writeFile(
       join(root, '.agent-policy/policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: [typescript]\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: [typescript]\ntargets: [codex]\n',
     )
     const previousCwd = process.cwd()
     process.chdir(root)
@@ -295,17 +295,17 @@ describe('policy lifecycle commands', () => {
   it.each([
     [
       'block sequence with a comment',
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: # select carefully\n  - typescript\n  # keep this note\n  - react\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: # select carefully\n  - typescript\n  # keep this note\n  - react\ntargets: [codex]\n',
       '# select carefully',
     ],
     [
       'multiline flow sequence',
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: [\n  typescript,\n  react,\n]\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: [\n  typescript,\n  react,\n]\ntargets: [codex]\n',
       undefined,
     ],
     [
       'quoted bundles key',
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\n"bundles": [typescript, react]\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\n"bundles": [typescript, react]\ntargets: [codex]\n',
       undefined,
     ],
   ])('updates an explicit selection in valid YAML for %s', async (_form, policySource, preservedComment) => {
@@ -345,7 +345,7 @@ describe('policy lifecycle commands', () => {
     const planPath = join(parent, 'selection-plan.json')
     const policySource = [
       'schemaVersion: v1',
-      'toolkitVersion: 0.1.0-alpha.0',
+      'toolkitVersion: 0.1.0-alpha.1',
       'bundles: # keep this comment',
       '  - typescript',
       '  - react',
@@ -384,7 +384,7 @@ describe('policy lifecycle commands', () => {
     await mkdir(join(root, '.agent-policy'), { recursive: true })
     await writeFile(
       join(root, '.agent-policy/policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: []\ntargets: [codex]\n',
     )
     await writeFile(join(root, 'AGENTS.md'), '# Existing team instructions\n')
     const previousCwd = process.cwd()
@@ -412,7 +412,7 @@ describe('policy lifecycle commands', () => {
     await mkdir(join(root, '.agent-policy'), { recursive: true })
     await writeFile(
       join(root, '.agent-policy/policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: []\ntargets: [codex]\n',
     )
     const previousCwd = process.cwd()
     process.chdir(root)

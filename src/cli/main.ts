@@ -43,7 +43,7 @@ function context(): CommandContext {
   return {
     repositoryRoot: process.cwd(),
     toolkitRoot: fileURLToPath(new URL('../../', import.meta.url)),
-    toolkitVersion: '0.1.0-alpha.0',
+    toolkitVersion: '0.1.0-alpha.1',
   }
 }
 
