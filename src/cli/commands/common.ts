@@ -9,8 +9,9 @@ import { codexAdapter } from '../../adapters/codex/project.js'
 import {
   MANAGED_REGION_END,
   MANAGED_REGION_START,
+  removeManagedRegion,
 } from '../../adapters/codex/managed-region.js'
-import type { ProjectionInput } from '../../adapters/types.js'
+import type { ProjectionInput, ScopedProfileProjection } from '../../adapters/types.js'
 import { resolvePolicy, type ResolvedPolicy } from '../../compiler/resolve-policy.js'
 import { migrateProject } from '../../compiler/migrations.js'
 import type { VirtualArtifact } from '../../domain/artifacts.js'
@@ -153,9 +154,7 @@ function managedMarkers(content: string): { readonly start: number; readonly end
 
 /** Remove exactly one owned Managed Region while preserving every surrounding byte. */
 export function withoutManagedRegion(content: string): string | undefined {
-  const bounds = managedMarkers(content)
-  if (bounds === undefined) return undefined
-  return `${content.slice(0, bounds.start)}${content.slice(bounds.end)}`
+  return removeManagedRegion(content)
 }
 
 export function hasManagedRegion(content: string): boolean {
@@ -247,6 +246,58 @@ function policyWithBundles(
   return { ...source, bundles: selected }
 }
 
+function profileObject(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Readonly<Record<string, unknown>>
+    : undefined
+}
+
+function profileStrings(
+  value: unknown,
+  profileId: string,
+  field: string,
+  sourcePath: string,
+): readonly string[] {
+  if (
+    !Array.isArray(value)
+    || value.length === 0
+    || value.some((item) => typeof item !== 'string' || item.length === 0)
+  ) {
+    throw policyError(
+      'INVALID_SCOPED_PROFILE',
+      `Scoped profile ${profileId} field ${field} must be a non-empty string array`,
+      sourcePath,
+    )
+  }
+  return value as readonly string[]
+}
+
+function scopedProfileProjections(project: ProjectPolicySource): readonly ScopedProfileProjection[] {
+  if (project.profiles === undefined) return []
+
+  return Object.entries(project.profiles).map(([profileId, value]) => {
+    const profile = profileObject(value)
+    if (profile === undefined) {
+      throw policyError(
+        'INVALID_SCOPED_PROFILE',
+        `Scoped profile ${profileId} must be an object`,
+        project.path,
+      )
+    }
+    const bundleIds = profileStrings(profile.bundleIds, profileId, 'bundleIds', project.path)
+    const paths = profileStrings(profile.paths, profileId, 'paths', project.path)
+    const workspaces = profile.workspaces === undefined
+      ? []
+      : profileStrings(profile.workspaces, profileId, 'workspaces', project.path)
+    return {
+      id: profileId,
+      bundleIds,
+      paths,
+      ...(workspaces.length === 0 ? {} : { workspaces }),
+    }
+  })
+}
+
 function throwDiagnostics(diagnostics: readonly Diagnostic[]): void {
   const errors = diagnostics.filter(({ severity }) => severity === 'error')
   if (errors.length > 0) throw new PolicyError(errors)
@@ -298,6 +349,7 @@ export async function compileCodex(
     resolvedPolicy,
     bundles,
     existingArtifacts: existing,
+    scopedProfiles: scopedProfileProjections(project),
   }
   return {
     project,

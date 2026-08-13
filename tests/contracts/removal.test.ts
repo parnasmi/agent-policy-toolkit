@@ -161,6 +161,57 @@ describe('removal and drift release contracts', () => {
     await expect(access(join(root, '.agents/skills/typescript/SKILL.md'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
+  it('reinitializes to byte-identical artifacts after removing a target from preserved sources', async () => {
+    const { parent, root } = await copiedFixture()
+    const initialAgents = '# Existing root instructions\n'
+    await writeFile(join(root, 'AGENTS.md'), initialAgents)
+    const firstPlanPath = join(parent, 'first-init-plan.json')
+    const removePlanPath = join(parent, 'reinit-remove-plan.json')
+    const secondPlanPath = join(parent, 'second-init-plan.json')
+
+    await withWorkingDirectory(root, async () => {
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core,typescript',
+        '--plan', firstPlanPath,
+      ], realIo())).resolves.toBe(0)
+      await expect(runCli(['apply', firstPlanPath, '--yes'], realIo())).resolves.toBe(0)
+    })
+    const artifactPaths = ['AGENTS.md', '.agents/skills/typescript/SKILL.md']
+    const firstArtifacts = new Map(
+      await Promise.all(artifactPaths.map(async (path) => [path, await readFile(join(root, path), 'utf8')] as const)),
+    )
+
+    await withWorkingDirectory(root, async () => {
+      await expect(runCli([
+        'remove',
+        '--target', 'codex',
+        '--plan', removePlanPath,
+      ], realIo())).resolves.toBe(0)
+      await expect(runCli(['apply', removePlanPath, '--yes'], realIo())).resolves.toBe(0)
+    })
+    expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toBe(initialAgents)
+    expect(await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8')).toContain('bundles: [typescript]')
+
+    await withWorkingDirectory(root, async () => {
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core,typescript',
+        '--plan', secondPlanPath,
+      ], realIo())).resolves.toBe(0)
+      await expect(runCli(['apply', secondPlanPath, '--yes'], realIo())).resolves.toBe(0)
+    })
+    for (const path of artifactPaths) {
+      const actual = await readFile(join(root, path), 'utf8')
+      const expected = firstArtifacts.get(path)
+      expect(expected).toBeDefined()
+      expect(actual).toBe(expected)
+      expect(hash(actual)).toBe(hash(expected ?? ''))
+    }
+  })
+
   it('leaves non-interactive drift unresolved without choosing adoption or regeneration', () => {
     const proposal = reconcileDrift(undefined, {
       artifactPath: 'AGENTS.md',

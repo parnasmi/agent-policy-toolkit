@@ -33,10 +33,25 @@ function validateMarkers(source: string): readonly [number, number] | undefined 
   return [start, end + MANAGED_REGION_END.length]
 }
 
+/** Remove the owned region and its generated end-of-file boundary, if present. */
+export function removeManagedRegion(existing: string): string | undefined {
+  const bounds = validateMarkers(existing)
+  if (bounds === undefined) return undefined
+
+  const [start, end] = bounds
+  const before = existing.slice(0, start)
+  const after = existing.slice(end)
+  if (before.length > 0 && before.endsWith('\n\n') && after === '\n') {
+    return before.slice(0, -1)
+  }
+  return `${before}${after}`
+}
+
 /** Replace only the owned region, or append it after one blank line when the file is unmanaged. */
 export function projectManagedRegion(existing: string | undefined, body: string): string {
   const region = `${MANAGED_REGION_START}\n${body.trim()}\n${MANAGED_REGION_END}`
   if (existing === undefined || existing.length === 0) return `${region}\n`
+  if (existing === '\n') return `${region}\n`
 
   const bounds = validateMarkers(existing)
   if (bounds !== undefined) {

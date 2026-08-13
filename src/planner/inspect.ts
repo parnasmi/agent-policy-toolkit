@@ -4,6 +4,7 @@ import { isAbsolute, posix, relative, resolve, sep, win32 } from 'node:path'
 import {
   MANAGED_REGION_END,
   MANAGED_REGION_START,
+  removeManagedRegion,
 } from '../adapters/codex/managed-region.js'
 import type { VirtualArtifact } from '../domain/artifacts.js'
 import { sha256Utf8 } from './hash.js'
@@ -167,7 +168,7 @@ export async function inspectArtifact(
         currentSha256,
       }
     }
-    const withoutRegion = `${currentContent.slice(0, currentRegion.start)}${currentContent.slice(currentRegion.end)}`
+    const withoutRegion = removeManagedRegion(currentContent) ?? currentContent
     return {
       path: normalized,
       state: withoutRegion === artifact.content ? 'clean' : 'managed-drift',

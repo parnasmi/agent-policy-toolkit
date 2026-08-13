@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from 'node:fs/promises'
+import { access, constants, mkdir, mkdtemp, readFile, realpath, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 
@@ -41,14 +41,16 @@ describe('cross-platform path and confinement contracts', () => {
     ['safe/../../escape.md', 'nested traversal'],
   ])('rejects %s (%s) before saving a plan', async (unsafePath) => {
     const { parent, root } = await sandbox()
+    const planPath = join(parent, 'unsafe-plan.json')
     await expect(createChangePlan({
       command: 'update',
       toolkitVersion,
       repositoryRoot: root,
-      planPath: join(parent, 'unsafe-plan.json'),
+      planPath,
       desiredArtifacts: [generated(unsafePath, 'must not be written\n')],
       createdAt: '2026-08-13T00:00:00.000Z',
     })).rejects.toThrow(/artifact path/i)
+    await expect(access(planPath, constants.F_OK)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('retains case and Unicode distinctions in canonical POSIX plan paths', async () => {
@@ -103,13 +105,16 @@ describe('cross-platform path and confinement contracts', () => {
     await mkdir(outsideRoot)
     await symlink(outsideRoot, join(root, 'linked'))
 
+    const planPath = join(parent, 'escape-plan.json')
     await expect(createChangePlan({
       command: 'update',
       toolkitVersion,
       repositoryRoot: root,
-      planPath: join(parent, 'escape-plan.json'),
+      planPath,
       desiredArtifacts: [generated('linked/escape.md', 'must remain outside the root\n')],
       createdAt: '2026-08-13T00:00:00.000Z',
     })).rejects.toThrow(/outside repository|symlink/i)
+    await expect(access(planPath, constants.F_OK)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(access(join(outsideRoot, 'escape.md'), constants.F_OK)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 })

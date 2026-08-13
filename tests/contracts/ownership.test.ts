@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { access, constants, cp, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,6 +12,7 @@ import type { ResolvedPolicy } from '../../src/compiler/resolve-policy.js'
 import type { VirtualArtifact } from '../../src/domain/artifacts.js'
 import { applyPlan } from '../../src/applier/apply-plan.js'
 import { createChangePlan } from '../../src/planner/create-plan.js'
+import { runCli, type CliIo } from '../../src/cli/main.js'
 
 const owner = '@agent-policy/agent-policy-toolkit'
 const toolkitVersion = '0.1.0-alpha.0'
@@ -58,28 +59,6 @@ const resolvedPolicy = {
   diagnostics: [],
 } satisfies ResolvedPolicy
 
-const scopedBundles = new Map<string, Bundle>([
-  ['core', bundles.get('core')!],
-  ['typescript', bundles.get('typescript')!],
-  ['react', {
-    id: 'react',
-    description: 'React policy.',
-    members: [],
-    applicability: { technologies: ['react'] },
-    dependencies: ['core'],
-  }],
-])
-
-const scopedResolvedPolicy = {
-  rules: [],
-  bundles: [
-    { id: 'core', description: 'Always-on policy.', applicability: {}, rules: [] },
-    { id: 'typescript', description: 'TypeScript policy.', applicability: { technologies: ['typescript'] }, rules: [] },
-    { id: 'react', description: 'React policy.', applicability: { technologies: ['react'] }, rules: [] },
-  ],
-  diagnostics: [],
-} satisfies ResolvedPolicy
-
 function projectionInput(existingArtifacts: ReadonlyMap<string, string>) {
   return {
     toolkitVersion,
@@ -97,6 +76,29 @@ async function copiedFixture(): Promise<{ readonly parent: string; readonly root
   return { parent, root }
 }
 
+function realIo(): CliIo {
+  return {
+    stdout: '',
+    stderr: '',
+    confirm: async () => false,
+    fs: {
+      readFile: async (path) => readFile(path, 'utf8'),
+      writeFile: async (path, contents) => writeFile(path, contents),
+      exists: async (path) => access(path, constants.F_OK).then(() => true).catch(() => false),
+    },
+  }
+}
+
+async function withWorkingDirectory<T>(root: string, action: () => Promise<T>): Promise<T> {
+  const previous = process.cwd()
+  process.chdir(root)
+  try {
+    return await action()
+  } finally {
+    process.chdir(previous)
+  }
+}
+
 describe('ownership and unmanaged-content contracts', () => {
   it('updates and removes only the owned region while preserving surrounding fixture bytes', async () => {
     const { parent, root } = await copiedFixture()
@@ -112,6 +114,11 @@ describe('ownership and unmanaged-content contracts', () => {
     expect(projected.operation).toBe('managed-region')
     expect(projected.content.slice(0, before.length)).toBe(before)
     expect(projected.content.slice(projected.content.length - after.length)).toBe(after)
+    const previousBody = existing.slice(before.length, existing.length - after.length)
+    const projectedBody = projected.content.slice(before.length, projected.content.length - after.length)
+    expect(projectedBody).not.toBe(previousBody)
+    expect(projectedBody).toContain('# Agent Policy')
+    expect(projectedBody).toContain('## Capability routing')
 
     const updatePlan = await createChangePlan({
       command: 'update',
@@ -169,48 +176,35 @@ describe('ownership and unmanaged-content contracts', () => {
     expect(await readFile(join(root, path), 'utf8')).toBe(foreign)
   })
 
-  it('keeps two workspace profiles root-discoverable with explicit path descriptions', async () => {
+  it('loads two workspace profiles through the root manifest and projects them through CLI', async () => {
     const manifest = await readFile(join(scopedFixture, '.agent-policy/policy.yaml'), 'utf8')
     expect(manifest).toContain('profiles:')
     expect(manifest).toContain('paths: [apps/web/**]')
     expect(manifest).toContain('paths: [apps/admin/**]')
 
-    const artifacts = await codexAdapter.project({
-      toolkitVersion,
-      canonicalSourceHash: 'scoped-profile-source',
-      resolvedPolicy: scopedResolvedPolicy,
-      bundles: scopedBundles,
-      scopedProfiles: [
-        {
-          id: 'web',
-          bundleIds: ['typescript'],
-          paths: ['apps/web/**'],
-          workspaces: ['@example/web'],
-        },
-        {
-          id: 'admin',
-          bundleIds: ['react'],
-          paths: ['apps/admin/**'],
-          workspaces: ['@example/admin'],
-        },
-      ],
+    const parent = await mkdtemp(join(tmpdir(), 'agent-policy-scoped-cli-contract-'))
+    const root = join(parent, 'consumer')
+    await cp(scopedFixture, root, { recursive: true })
+    const planPath = join(parent, 'scoped-plan.json')
+
+    await withWorkingDirectory(root, async () => {
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core,typescript,react',
+        '--plan', planPath,
+      ], realIo())).resolves.toBe(0)
+      await expect(runCli(['apply', planPath, '--yes'], realIo())).resolves.toBe(0)
     })
 
-    expect(artifacts.map(({ path }) => path)).toEqual([
-      'AGENTS.md',
-      '.agents/skills/typescript/SKILL.md',
-      '.agents/skills/react/SKILL.md',
-    ])
-    const react = artifacts.find(({ path }) => path === '.agents/skills/react/SKILL.md')
-    const typescript = artifacts.find(({ path }) => path === '.agents/skills/typescript/SKILL.md')
-    expect(react?.content).toContain('Scoped profile admin applies to paths apps/admin/** and workspaces @example/admin.')
-    expect(typescript?.content).toContain('Scoped profile web applies to paths apps/web/** and workspaces @example/web.')
-    expect(react?.content).not.toContain('apps/web/**')
-    expect(typescript?.content).not.toContain('apps/admin/**')
+    const react = await readFile(join(root, '.agents/skills/react/SKILL.md'), 'utf8')
+    const typescript = await readFile(join(root, '.agents/skills/typescript/SKILL.md'), 'utf8')
+    expect(react).toContain('Scoped profile admin applies to paths apps/admin/** and workspaces @example/admin.')
+    expect(typescript).toContain('Scoped profile web applies to paths apps/web/** and workspaces @example/web.')
+    expect(react).not.toContain('apps/web/**')
+    expect(typescript).not.toContain('apps/admin/**')
 
-    const paths = artifacts.map(({ path }) => path)
-    expect(paths.filter((path) => path === 'AGENTS.md')).toHaveLength(1)
-    expect(paths.some((path) => path.endsWith('/AGENTS.md'))).toBe(false)
-    expect(paths.some((path) => path.startsWith('apps/'))).toBe(false)
+    const paths = await readdir(root, { recursive: true })
+    expect(paths.filter((path) => path.endsWith('AGENTS.md'))).toEqual(['AGENTS.md'])
   })
 })
