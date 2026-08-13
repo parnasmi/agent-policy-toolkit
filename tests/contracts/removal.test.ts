@@ -65,6 +65,63 @@ async function withWorkingDirectory<T>(root: string, action: () => Promise<T>): 
 }
 
 describe('removal and drift release contracts', () => {
+  async function installCanonicalProjection(root: string, parent: string): Promise<void> {
+    await withWorkingDirectory(root, async () => {
+      const initPlan = join(parent, 'canonical-init-plan.json')
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core,typescript',
+        '--plan', initPlan,
+      ], realIo())).resolves.toBe(0)
+      await expect(runCli(['apply', initPlan, '--yes'], realIo())).resolves.toBe(0)
+    })
+  }
+
+  it('fails target removal on a drifted Managed Region before creating a plan', async () => {
+    const { parent, root } = await copiedFixture()
+    await installCanonicalProjection(root, parent)
+    const path = 'AGENTS.md'
+    const edited = (await readFile(join(root, path), 'utf8')).replace(
+      '## Capability routing',
+      '## Manually edited policy region',
+    )
+    await writeFile(join(root, path), edited)
+    const planPath = join(parent, 'managed-region-drift-remove-plan.json')
+
+    await withWorkingDirectory(root, async () => {
+      const removal = realIo()
+      await expect(runCli(['remove', '--target', 'codex', '--plan', planPath], removal)).resolves.toBe(1)
+      expect(removal.stderr).toMatch(/drift|reconcile/i)
+    })
+
+    await expect(access(planPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(await readFile(join(root, path), 'utf8')).toBe(edited)
+    expect(await readFile(join(root, '.agents/skills/typescript/SKILL.md'), 'utf8')).toContain('TypeScript')
+  })
+
+  it('fails generated removal on a drifted generated skill before creating a plan', async () => {
+    const { parent, root } = await copiedFixture()
+    await installCanonicalProjection(root, parent)
+    const path = '.agents/skills/typescript/SKILL.md'
+    const edited = (await readFile(join(root, path), 'utf8')).replace(
+      '# typescript policy',
+      '# Manually edited TypeScript policy',
+    )
+    await writeFile(join(root, path), edited)
+    const planPath = join(parent, 'generated-skill-drift-remove-plan.json')
+
+    await withWorkingDirectory(root, async () => {
+      const removal = realIo()
+      await expect(runCli(['remove', '--generated', '--plan', planPath], removal)).resolves.toBe(1)
+      expect(removal.stderr).toMatch(/drift|reconcile/i)
+    })
+
+    await expect(access(planPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(await readFile(join(root, path), 'utf8')).toBe(edited)
+    expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toContain('agent-policy:start')
+  })
+
   it('rejects generated-copy hash divergence without overwriting the manual copy', async () => {
     const { parent, root } = await copiedFixture()
     const path = '.agents/skills/typescript/SKILL.md'
@@ -140,6 +197,7 @@ describe('removal and drift release contracts', () => {
     ['generated', ['remove', '--generated']],
   ] as const)('uninstalls the %s projection while preserving policy sources and unrelated target output', async (_mode, command) => {
     const { parent, root } = await copiedFixture()
+    await installCanonicalProjection(root, parent)
     const policyBefore = await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8')
     const packageBefore = await readFile(join(root, 'package.json'), 'utf8')
     const foreignPath = join(root, '.agents/skills/foreign/SKILL.md')

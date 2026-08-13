@@ -12,6 +12,8 @@ Agent Policy Toolkit is a portable, layered policy compiler for AI coding-agent 
 
 The toolkit owns shared catalog sources under `catalog/`. A consumer owns its project policy under `.agent-policy/`. Harness files are projections, not canonical policy.
 
+The published package includes the maintainer and consumer guidance under `docs/` and this changelog; the links below therefore work from an installed tarball as well as from the repository.
+
 ## Install
 
 Pin the exact prerelease in a consumer repository:
@@ -38,18 +40,20 @@ Do not use a workspace, link, branch, or version range for a dogfood installatio
 
 When `--bundles` is omitted, detection is advisory and must be confirmed interactively. `--yes` confirms application of a reviewed plan; it never confirms an advisory Bundle Selection. Existing prose in `AGENTS.md` remains unmanaged and byte-preserved outside the bounded Managed Region.
 
+Optional `.agent-policy/invariants.yaml` contains the consumer's ordered, atomic Repository Invariants. The CLI validates and projects their `instruction` text into the Codex Managed Region; `rules: []` selects none. The file is canonical input, never inferred from existing `AGENTS.md` prose.
+
 The CLI never creates a Git commit. A successful apply ends with `Ready to commit`; the human reviews and commits the resulting source and projection changes.
 
 For exact ownership, drift, removal, and rollback behavior, read [Consumer Lifecycle](docs/consumer-lifecycle.md). For source authoring, read [Authoring Rules](docs/authoring-rules.md).
 
 ## Implemented boundary
 
-The Codex Adapter Knowledge tested in this prerelease is:
+The Codex Adapter Knowledge declared for this experimental prerelease is:
 
-- root instructions discovered from `AGENTS.md`;
-- shared skills discovered from `.agents/skills/*/SKILL.md`;
-- Codex native roles are unavailable in this slice;
-- isolated work, parallel work, harness-native tools, and scoped instructions are recorded as capabilities of the tested profile.
+- root instructions discovered from `AGENTS.md` (directly contract-tested);
+- shared skills discovered from `.agents/skills/*/SKILL.md` (directly contract-tested);
+- Codex native roles are unavailable in this slice (declared profile value; no native role projection is emitted);
+- isolated work, parallel work, harness-native tools, and scoped instructions are declared experimental profile knowledge, not independently verified toolkit behavior.
 
 The adapter emits ordinary files rather than symlinks. It projects compact Core policy, selected Repository Invariants, and concise routing into a bounded `AGENTS.md` Managed Region. Domain bundles are emitted as root-discoverable skills with semantic positive hints and explicit exclusions.
 

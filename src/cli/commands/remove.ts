@@ -13,6 +13,11 @@ import {
   type CommandContext,
 } from './common.js'
 
+function assertCanonicalArtifact(path: string, current: string, canonical: VirtualArtifact): void {
+  if (current === canonical.content) return
+  throw new Error(`Generated artifact drift at ${path}; reconcile before planning removal`)
+}
+
 async function targetRemoval(
   context: CommandContext,
 ): Promise<{ readonly sourcePaths: readonly string[]; readonly desired: readonly VirtualArtifact[]; readonly removals: readonly string[] }> {
@@ -22,6 +27,7 @@ async function targetRemoval(
   for (const artifact of compilation.artifacts) {
     const current = await readText(context.repositoryRoot, artifact.path)
     if (current === undefined) continue
+    assertCanonicalArtifact(artifact.path, current, artifact)
     if (artifact.operation === 'managed-region') {
       const removal = managedRemovalArtifact({ path: artifact.path, content: current, kind: 'managed-region' })
       if (removal !== undefined) desired.push(removal)
@@ -35,10 +41,14 @@ async function targetRemoval(
 async function generatedRemoval(
   context: CommandContext,
 ): Promise<{ readonly sourcePaths: readonly string[]; readonly desired: readonly VirtualArtifact[]; readonly removals: readonly string[] }> {
+  const compilation = await compileCodex(context)
+  const canonical = new Map(compilation.artifacts.map((artifact) => [artifact.path, artifact]))
   const generated = await findGeneratedFiles(context.repositoryRoot)
   const desired: VirtualArtifact[] = []
   const removals: string[] = []
   for (const file of generated) {
+    const expected = canonical.get(file.path)
+    if (expected !== undefined) assertCanonicalArtifact(file.path, file.content, expected)
     if (file.kind === 'managed-region') {
       const artifact = managedRemovalArtifact(file)
       if (artifact !== undefined) desired.push(artifact)
@@ -46,13 +56,7 @@ async function generatedRemoval(
       removals.push(file.path)
     }
   }
-  let sourcePaths: readonly string[] = []
-  try {
-    sourcePaths = (await compileCodex(context)).sourcePaths
-  } catch {
-    // Generated cleanup remains available if canonical sources have already been removed.
-  }
-  return { sourcePaths, desired, removals }
+  return { sourcePaths: compilation.sourcePaths, desired, removals }
 }
 
 export async function runRemove(

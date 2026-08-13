@@ -166,4 +166,53 @@ describe('canonical source schema validation', () => {
       ciIntegration: { command: 'agent-policy check' },
     })
   })
+
+  it('loads ordered atomic Repository Invariants from the canonical source', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-policy-schema-'))
+    const policyDir = join(root, '.agent-policy')
+    await mkdir(policyDir)
+    await writeFile(
+      join(policyDir, 'policy.yaml'),
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+    )
+    await writeFile(
+      join(policyDir, 'invariants.yaml'),
+      [
+        'rules:',
+        '  - id: repository.package-manager',
+        '    instruction: Use pnpm for repository commands.',
+        '    rationale: One package manager keeps installs reproducible.',
+        '  - id: repository.review-diff',
+        '    instruction: Review the complete diff before committing.',
+        '    rationale: Full review catches generated drift.',
+        '',
+      ].join('\n'),
+    )
+
+    await expect(loadProjectPolicy(root)).resolves.toMatchObject({
+      invariantsPath: '.agent-policy/invariants.yaml',
+      repositoryInvariants: [
+        'Use pnpm for repository commands.',
+        'Review the complete diff before committing.',
+      ],
+    })
+  })
+
+  it('rejects duplicate Repository Invariant identifiers', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-policy-schema-'))
+    const policyDir = join(root, '.agent-policy')
+    await mkdir(policyDir)
+    await writeFile(
+      join(policyDir, 'policy.yaml'),
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+    )
+    await writeFile(
+      join(policyDir, 'invariants.yaml'),
+      'rules:\n  - id: repository.same\n    instruction: First.\n  - id: repository.same\n    instruction: Second.\n',
+    )
+
+    await expect(loadProjectPolicy(root)).rejects.toMatchObject({
+      diagnostics: [expect.objectContaining({ code: 'DUPLICATE_REPOSITORY_INVARIANT' })],
+    } satisfies Partial<PolicyError>)
+  })
 })

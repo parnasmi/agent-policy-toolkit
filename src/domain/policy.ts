@@ -41,6 +41,8 @@ export interface ProjectPolicy {
   readonly toolkitVersion: string
   readonly bundles: readonly string[]
   readonly targets: readonly string[]
+  /** Ordered project-owned instructions loaded from .agent-policy/invariants.yaml. */
+  readonly repositoryInvariants?: readonly string[]
   readonly profiles?: Readonly<Record<string, unknown>>
   readonly renderOptions?: Readonly<Record<string, unknown>>
   readonly adapterOptions?: Readonly<Record<string, unknown>>

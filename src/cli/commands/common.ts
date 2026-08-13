@@ -340,7 +340,11 @@ export async function compileCodex(
   const bundles = await loadBundles(context.toolkitRoot)
   const resolvedPolicy = resolvePolicy({ rules: catalog.rules, bundles }, project)
   throwDiagnostics(resolvedPolicy.diagnostics)
-  const sourcePaths = [project.path, ...project.overlayPaths]
+  const sourcePaths = [
+    project.path,
+    ...project.overlayPaths,
+    ...(project.invariantsPath === undefined ? [] : [project.invariantsPath]),
+  ]
   const canonicalSourceHash = await sourceHash(context.repositoryRoot, sourcePaths, sourceOverrides)
   const existing = await existingArtifacts(context.repositoryRoot, resolvedPolicy)
   const input: ProjectionInput = {
@@ -349,6 +353,7 @@ export async function compileCodex(
     resolvedPolicy,
     bundles,
     existingArtifacts: existing,
+    repositoryInvariants: project.repositoryInvariants,
     scopedProfiles: scopedProfileProjections(project),
   }
   return {

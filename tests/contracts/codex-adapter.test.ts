@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 
 import { codexAdapter } from '../../src/adapters/codex/project.js'
+import { removeManagedRegion } from '../../src/adapters/codex/managed-region.js'
 import type { Bundle, Rule } from '../../src/domain/policy.js'
 import { resolvePolicy } from '../../src/compiler/resolve-policy.js'
 
@@ -84,6 +85,18 @@ function projectionInput(existingArtifacts: ReadonlyMap<string, string> = new Ma
 }
 
 describe('Codex adapter contract', () => {
+  it.each([
+    ['non-final-newline', '# Existing instructions'],
+    ['newline-only', '\n'],
+  ])('removes a projected Managed Region and restores %s AGENTS.md bytes', async (_case, existing) => {
+    const [agents] = await codexAdapter.project(
+      projectionInput(new Map([['AGENTS.md', existing]])),
+    )
+
+    expect(agents).toBeDefined()
+    expect(removeManagedRegion(agents?.content ?? '')).toBe(existing)
+  })
+
   it('projects a bounded root region in memory while preserving unmanaged bytes', async () => {
     const existing = await readFile(
       new URL('../fixtures/repositories/codex-existing/AGENTS.md', import.meta.url),

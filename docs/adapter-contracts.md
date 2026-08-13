@@ -8,7 +8,7 @@ canonical capability
   → semantics-preserving fallback otherwise
 ```
 
-Adapter Knowledge records the tested discovery paths and harness capabilities for a release. Those paths are versioned knowledge, not permanent architecture contracts.
+Adapter Knowledge records declared discovery paths and harness capabilities for a release. Directly contract-tested values are called out below; the remaining values are experimental profile knowledge, not proof of independent runtime behavior. These declarations are versioned knowledge, not permanent architecture contracts.
 
 ## Public projection contract
 
@@ -28,18 +28,18 @@ Do not edit; change `.agent-policy/` and regenerate.
 
 ## Codex `0.1.0-alpha.0` profile
 
-Codex is experimental in this release. The exact tested Adapter Knowledge profile is `codex-2026-08-12`:
+Codex is experimental in this release. The declared Adapter Knowledge profile is `codex-2026-08-12`; evidence boundaries are listed per row:
 
-| Capability | Tested value |
-| --- | --- |
-| Instruction discovery | `AGENTS.md` |
-| Skill discovery | `.agents/skills/*/SKILL.md` |
-| Native roles | `false` |
-| Isolated work | `true` |
-| Parallel work | `true` |
-| Tool access | `harness-native` |
-| Scoped instructions | `true` |
-| Support | `experimental` |
+| Capability | Declared profile value | Evidence boundary |
+| --- | --- | --- |
+| Instruction discovery | `AGENTS.md` | Directly contract-tested by Codex projection tests |
+| Skill discovery | `.agents/skills/*/SKILL.md` | Directly contract-tested by Codex projection tests |
+| Native roles | `false` | Declared experimental profile value; no role projection is emitted |
+| Isolated work | `true` | Declared experimental profile value; not independently exercised here |
+| Parallel work | `true` | Declared experimental profile value; not independently exercised here |
+| Tool access | `harness-native` | Declared experimental profile value; not independently exercised here |
+| Scoped instructions | `true` | Declared experimental profile value; projection text is contract-tested, harness selection is not |
+| Support | `experimental` | Release boundary, not a semantic model-evaluation result |
 
 The root projection inserts exactly one marker-delimited region:
 

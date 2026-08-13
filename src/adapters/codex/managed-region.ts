@@ -41,16 +41,17 @@ export function removeManagedRegion(existing: string): string | undefined {
   const [start, end] = bounds
   const before = existing.slice(0, start)
   const after = existing.slice(end)
-  if (before.length > 0 && before.endsWith('\n\n') && after === '\n') {
+  if (before.endsWith('\n') && after === '\n') {
     return before.slice(0, -1)
   }
   return `${before}${after}`
 }
 
-/** Replace only the owned region, or append it after one blank line when the file is unmanaged. */
+/** Replace only the owned region, or append it with a reversible newline boundary when unmanaged. */
 export function projectManagedRegion(existing: string | undefined, body: string): string {
   const region = `${MANAGED_REGION_START}\n${body.trim()}\n${MANAGED_REGION_END}`
-  if (existing === undefined || existing.length === 0) return `${region}\n`
+  if (existing === undefined) return `${region}\n`
+  if (existing.length === 0) return region
   if (existing === '\n') return `${region}\n`
 
   const bounds = validateMarkers(existing)
@@ -58,6 +59,6 @@ export function projectManagedRegion(existing: string | undefined, body: string)
     return `${existing.slice(0, bounds[0])}${region}${existing.slice(bounds[1])}`
   }
 
-  const separator = existing.endsWith('\n') ? '\n' : '\n\n'
+  const separator = '\n'
   return `${existing}${separator}${region}\n`
 }

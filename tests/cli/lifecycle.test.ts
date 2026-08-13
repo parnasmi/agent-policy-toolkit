@@ -30,6 +30,62 @@ function realIo(root: string, confirm = false, confirmFn?: () => Promise<boolean
 }
 
 describe('policy lifecycle commands', () => {
+  it('projects selected Repository Invariants in order and supports an empty selection', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'agent-policy-invariants-'))
+    const root = join(parent, 'consumer')
+    const planPath = join(parent, 'invariants-plan.json')
+    await mkdir(join(root, '.agent-policy'), { recursive: true })
+    await writeFile(
+      join(root, '.agent-policy/policy.yaml'),
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+    )
+    await writeFile(
+      join(root, '.agent-policy/invariants.yaml'),
+      [
+        'rules:',
+        '  - id: repository.package-manager',
+        '    instruction: Use pnpm for repository commands.',
+        '  - id: repository.review-diff',
+        '    instruction: Review the complete diff before committing.',
+        '',
+      ].join('\n'),
+    )
+
+    const previousCwd = process.cwd()
+    process.chdir(root)
+    try {
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core',
+        '--plan', planPath,
+      ], realIo())).resolves.toBe(0)
+      const initialPlan = JSON.parse(await readFile(planPath, 'utf8')) as { sourceHashes: Record<string, string> }
+      expect(initialPlan.sourceHashes['.agent-policy/invariants.yaml']).toMatch(/^[0-9a-f]{64}$/)
+      await expect(runCli(['apply', planPath, '--yes'], realIo())).resolves.toBe(0)
+
+      const agents = await readFile(join(root, 'AGENTS.md'), 'utf8')
+      expect(agents.indexOf('Use pnpm for repository commands.')).toBeGreaterThanOrEqual(0)
+      expect(agents.indexOf('Review the complete diff before committing.')).toBeGreaterThan(
+        agents.indexOf('Use pnpm for repository commands.'),
+      )
+
+      await writeFile(join(root, '.agent-policy/invariants.yaml'), 'rules: []\n')
+      const emptyPlanPath = join(parent, 'empty-invariants-plan.json')
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core',
+        '--plan', emptyPlanPath,
+      ], realIo())).resolves.toBe(0)
+      await expect(runCli(['apply', emptyPlanPath, '--yes'], realIo())).resolves.toBe(0)
+      expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).not.toContain('Use pnpm for repository commands.')
+      expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).not.toContain('Review the complete diff before committing.')
+    } finally {
+      process.chdir(previousCwd)
+    }
+  })
+
   it('plans, reviews, applies, checks, and removes Codex projections without source writes', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'agent-policy-lifecycle-'))
     const root = join(parent, 'consumer')

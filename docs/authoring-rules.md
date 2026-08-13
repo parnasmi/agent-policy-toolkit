@@ -108,6 +108,22 @@ Every directive names a target and a non-empty reason. Aliases resolve to canoni
 
 The update lifecycle is explicit: change canonical or project-owned sources, compile and inspect a new plan, review the diff, then apply that exact plan. Drift is reconciled by a reviewed `adopt`, `regenerate`, or `abort` decision; there is no silent artifact adoption. Removal is source-preserving and only removes projections owned by this toolkit.
 
+## Repository Invariants
+
+Repository Invariants are small, project-owned instructions that apply across the repository. They live in `.agent-policy/invariants.yaml`, which is an optional canonical source separate from the root `policy.yaml`:
+
+```yaml
+rules:
+  - id: repository.package-manager
+    instruction: Use pnpm for repository commands.
+    rationale: One package manager keeps installs reproducible.
+  - id: repository.review-diff
+    instruction: Review the complete diff before committing.
+    rationale: Full review catches generated drift.
+```
+
+The `rules` list is both the selection and the projection order. Each item requires a unique namespaced `id` and a non-empty `instruction`; `rationale` is optional but, when present, must be non-empty. An empty `rules: []` selects no invariants. The CLI loads the file without rewriting it, includes it in the canonical source hash, and projects only the ordered instruction text into Codex's Managed Region. Existing prose is never mined into an invariant.
+
 ## Render profiles
 
 One canonical rule supplies multiple deterministic projections:

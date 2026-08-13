@@ -21,7 +21,7 @@ Typical project-owned sources are:
 └── evidence/<case>.md
 ```
 
-The foundation CLI consumes the root manifest and declared overlays. It does not infer Repository Invariants from existing prose, rewrite a consumer's source into a generated format, or create an unreviewed source selection.
+The foundation CLI consumes the root manifest, optional `.agent-policy/invariants.yaml`, and declared overlays. Invariants use an ordered `rules` list of unique namespaced IDs and non-empty instructions; the list is the selection and order, and `rules: []` selects none. The CLI projects only those instructions into Codex's Managed Region and includes the file in the canonical source hash. It does not infer Repository Invariants from existing prose, rewrite a consumer's source into a generated format, or create an unreviewed source selection.
 
 ## Plan, review, apply
 
@@ -111,6 +111,8 @@ agent-policy apply /absolute/path/to/remove-generated.json --yes
 `--target codex` removes only the Codex projection: it removes this toolkit's Managed Region while retaining surrounding `AGENTS.md` bytes and removes this toolkit's generated skills. `--generated` removes every recognized projection owned by this toolkit, preserving unrelated foreign or hand-written files.
 
 Both modes preserve `.agent-policy/`, the toolkit dependency, and local scripts. Source purge, package-wiring uninstall, and a flag implying either operation are deliberately absent from this release. Reinitializing from the preserved source must produce identical projection bytes and hashes.
+
+Removal planning also recompiles the canonical projection and compares every present owned artifact with its desired bytes before creating a removal plan. A drifted Managed Region or generated skill fails closed and asks for reconciliation; it does not use the edited bytes to construct a deletion plan.
 
 ## Scope and profiles
 

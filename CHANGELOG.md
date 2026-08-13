@@ -18,6 +18,14 @@ The first Codex foundation prerelease. This is experimental evaluation software,
 - Maintainer and consumer lifecycle documentation, including the portable hard-link safety ruling.
 - MIT licensing.
 
+### Review fixes included in the prerelease
+
+- Canonical `.agent-policy/invariants.yaml` loading, validation, ordered projection, and empty-selection behavior.
+- Fail-closed target/generated removal when an owned artifact has drifted from canonical desired bytes.
+- Exact Managed Region byte preservation for non-final-newline and newline-only `AGENTS.md` inputs.
+- Published `docs/` and `CHANGELOG.md` files so installed-package documentation links remain usable.
+- Adapter Knowledge wording distinguishes directly contract-tested discovery from declared experimental profile values.
+
 ### Support boundary
 
 - Codex support is experimental and tied to Adapter Knowledge `codex-2026-08-12`.
