@@ -41,9 +41,11 @@ export function removeManagedRegion(existing: string): string | undefined {
   const [start, end] = bounds
   const before = existing.slice(0, start)
   const after = existing.slice(end)
-  if (before.endsWith('\n') && after === '\n') {
+  if (after === '\n' && before.endsWith('\n\n')) {
     return before.slice(0, -1)
   }
+  if (after === '\n' && before.endsWith('\n')) return before
+  if (after.length === 0 && before.endsWith('\n')) return before.slice(0, -1)
   return `${before}${after}`
 }
 
@@ -60,5 +62,6 @@ export function projectManagedRegion(existing: string | undefined, body: string)
   }
 
   const separator = '\n'
-  return `${existing}${separator}${region}\n`
+  const suffix = existing.endsWith('\n') ? '\n' : ''
+  return `${existing}${separator}${region}${suffix}`
 }

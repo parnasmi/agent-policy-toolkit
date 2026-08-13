@@ -215,4 +215,22 @@ describe('canonical source schema validation', () => {
       diagnostics: [expect.objectContaining({ code: 'DUPLICATE_REPOSITORY_INVARIANT' })],
     } satisfies Partial<PolicyError>)
   })
+
+  it('rejects Repository Invariant identifiers without a namespace', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-policy-schema-'))
+    const policyDir = join(root, '.agent-policy')
+    await mkdir(policyDir)
+    await writeFile(
+      join(policyDir, 'policy.yaml'),
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+    )
+    await writeFile(
+      join(policyDir, 'invariants.yaml'),
+      'rules:\n  - id: repository\n    instruction: Use pnpm.\n',
+    )
+
+    await expect(loadProjectPolicy(root)).rejects.toMatchObject({
+      diagnostics: [expect.objectContaining({ code: 'INVALID_REPOSITORY_INVARIANT' })],
+    } satisfies Partial<PolicyError>)
+  })
 })

@@ -81,7 +81,7 @@ async function readDeclaredFile(root: string, policyDirectory: string, file: str
   }
 }
 
-const invariantIdPattern = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/
+const invariantIdPattern = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

@@ -22,6 +22,7 @@ The first Codex foundation prerelease. This is experimental evaluation software,
 
 - Canonical `.agent-policy/invariants.yaml` loading, validation, ordered projection, and empty-selection behavior.
 - Fail-closed target/generated removal when an owned artifact has drifted from canonical desired bytes.
+- Source-less generated cleanup using self-contained artifact hashes, with unverifiable legacy output rejected.
 - Exact Managed Region byte preservation for non-final-newline and newline-only `AGENTS.md` inputs.
 - Published `docs/` and `CHANGELOG.md` files so installed-package documentation links remain usable.
 - Adapter Knowledge wording distinguishes directly contract-tested discovery from declared experimental profile values.

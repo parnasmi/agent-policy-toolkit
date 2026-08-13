@@ -112,7 +112,7 @@ agent-policy apply /absolute/path/to/remove-generated.json --yes
 
 Both modes preserve `.agent-policy/`, the toolkit dependency, and local scripts. Source purge, package-wiring uninstall, and a flag implying either operation are deliberately absent from this release. Reinitializing from the preserved source must produce identical projection bytes and hashes.
 
-Removal planning also recompiles the canonical projection and compares every present owned artifact with its desired bytes before creating a removal plan. A drifted Managed Region or generated skill fails closed and asks for reconciliation; it does not use the edited bytes to construct a deletion plan.
+Removal planning also recompiles the canonical projection and compares every present owned artifact with its desired bytes before creating a removal plan. A drifted Managed Region or generated skill fails closed and asks for reconciliation; it does not use the edited bytes to construct a deletion plan. When canonical project sources are already absent, `--generated` can still remove current-release projections by verifying their self-contained artifact hashes; missing or invalid metadata fails closed rather than allowing an unverifiable deletion.
 
 ## Scope and profiles
 

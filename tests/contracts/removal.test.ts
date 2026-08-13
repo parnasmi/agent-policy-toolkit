@@ -122,6 +122,63 @@ describe('removal and drift release contracts', () => {
     expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toContain('agent-policy:start')
   })
 
+  it('plans a no-op target removal for an entirely unmanaged AGENTS.md', async () => {
+    const { parent, root } = await copiedFixture()
+    await writeFile(
+      join(root, '.agent-policy/policy.yaml'),
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: []\ntargets: [codex]\n',
+    )
+    const unmanaged = '# Human-owned instructions\n'
+    await writeFile(join(root, 'AGENTS.md'), unmanaged)
+    const planPath = join(parent, 'unmanaged-target-remove-plan.json')
+
+    await withWorkingDirectory(root, async () => {
+      await expect(runCli(['remove', '--target', 'codex', '--plan', planPath], realIo())).resolves.toBe(0)
+    })
+
+    const plan = JSON.parse(await readFile(planPath, 'utf8')) as {
+      readonly desiredArtifacts: readonly unknown[]
+      readonly removals: readonly string[]
+    }
+    expect(plan.desiredArtifacts).toEqual([])
+    expect(plan.removals).toEqual([])
+    expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toBe(unmanaged)
+  })
+
+  it('removes owned projections after canonical sources are removed', async () => {
+    const { parent, root } = await copiedFixture()
+    await installCanonicalProjection(root, parent)
+    await rm(join(root, '.agent-policy/policy.yaml'))
+    const planPath = join(parent, 'source-less-generated-remove-plan.json')
+
+    await withWorkingDirectory(root, async () => {
+      await expect(runCli(['remove', '--generated', '--plan', planPath], realIo())).resolves.toBe(0)
+      await expect(runCli(['apply', planPath, '--yes'], realIo())).resolves.toBe(0)
+    })
+
+    expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toContain('# Keep this hand-written footer')
+    expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).not.toContain(start)
+    await expect(access(join(root, '.agents/skills/typescript/SKILL.md'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('refuses source-less generated removal when owned output is drifted', async () => {
+    const { parent, root } = await copiedFixture()
+    await installCanonicalProjection(root, parent)
+    const skillPath = join(root, '.agents/skills/typescript/SKILL.md')
+    await writeFile(skillPath, `${await readFile(skillPath, 'utf8')}\nManual drift\n`)
+    await rm(join(root, '.agent-policy/policy.yaml'))
+    const planPath = join(parent, 'source-less-drift-remove-plan.json')
+
+    await withWorkingDirectory(root, async () => {
+      const removal = realIo()
+      await expect(runCli(['remove', '--generated', '--plan', planPath], removal)).resolves.toBe(1)
+      expect(removal.stderr).toMatch(/drift|reconcile/i)
+    })
+
+    await expect(access(planPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(await readFile(skillPath, 'utf8')).toContain('Manual drift')
+  })
+
   it('rejects generated-copy hash divergence without overwriting the manual copy', async () => {
     const { parent, root } = await copiedFixture()
     const path = '.agents/skills/typescript/SKILL.md'

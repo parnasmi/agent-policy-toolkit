@@ -3,10 +3,14 @@ import { resolve } from 'node:path'
 import type { CliIo } from '../main.js'
 import type { CliArguments } from '../arguments.js'
 import type { VirtualArtifact } from '../../domain/artifacts.js'
+import { PolicyError } from '../../domain/diagnostics.js'
+import { hasValidArtifactHash } from '../../planner/hash.js'
+import { MANAGED_REGION_END, MANAGED_REGION_START } from '../../adapters/codex/managed-region.js'
 import {
   compileCodex,
   findGeneratedFiles,
   formatError,
+  hasManagedRegion,
   managedRemovalArtifact,
   readText,
   saveProjectionPlan,
@@ -18,6 +22,24 @@ function assertCanonicalArtifact(path: string, current: string, canonical: Virtu
   throw new Error(`Generated artifact drift at ${path}; reconcile before planning removal`)
 }
 
+function sourceUnavailable(error: unknown): boolean {
+  return error instanceof PolicyError
+    && error.diagnostics.length > 0
+    && error.diagnostics.every(({ code }) => code === 'MISSING_MANIFEST_REFERENCE' || code === 'MISSING_POLICY_SOURCE')
+}
+
+function assertSourceLessArtifact(path: string, content: string, managedRegion: boolean): void {
+  const integrityContent = managedRegion
+    ? content.slice(
+      content.indexOf(MANAGED_REGION_START),
+      content.indexOf(MANAGED_REGION_END) + MANAGED_REGION_END.length,
+    )
+    : content
+  if (!hasValidArtifactHash(integrityContent)) {
+    throw new Error(`Generated artifact drift or missing integrity metadata at ${path}; reconcile before planning removal`)
+  }
+}
+
 async function targetRemoval(
   context: CommandContext,
 ): Promise<{ readonly sourcePaths: readonly string[]; readonly desired: readonly VirtualArtifact[]; readonly removals: readonly string[] }> {
@@ -27,11 +49,13 @@ async function targetRemoval(
   for (const artifact of compilation.artifacts) {
     const current = await readText(context.repositoryRoot, artifact.path)
     if (current === undefined) continue
-    assertCanonicalArtifact(artifact.path, current, artifact)
     if (artifact.operation === 'managed-region') {
+      if (!hasManagedRegion(current)) continue
+      assertCanonicalArtifact(artifact.path, current, artifact)
       const removal = managedRemovalArtifact({ path: artifact.path, content: current, kind: 'managed-region' })
       if (removal !== undefined) desired.push(removal)
     } else {
+      assertCanonicalArtifact(artifact.path, current, artifact)
       removals.push(artifact.path)
     }
   }
@@ -41,14 +65,20 @@ async function targetRemoval(
 async function generatedRemoval(
   context: CommandContext,
 ): Promise<{ readonly sourcePaths: readonly string[]; readonly desired: readonly VirtualArtifact[]; readonly removals: readonly string[] }> {
-  const compilation = await compileCodex(context)
-  const canonical = new Map(compilation.artifacts.map((artifact) => [artifact.path, artifact]))
+  let compilation: Awaited<ReturnType<typeof compileCodex>> | undefined
+  try {
+    compilation = await compileCodex(context)
+  } catch (error) {
+    if (!sourceUnavailable(error)) throw error
+  }
+  const canonical = new Map(compilation?.artifacts.map((artifact) => [artifact.path, artifact]) ?? [])
   const generated = await findGeneratedFiles(context.repositoryRoot)
   const desired: VirtualArtifact[] = []
   const removals: string[] = []
   for (const file of generated) {
     const expected = canonical.get(file.path)
-    if (expected !== undefined) assertCanonicalArtifact(file.path, file.content, expected)
+    if (expected === undefined) assertSourceLessArtifact(file.path, file.content, file.kind === 'managed-region')
+    else assertCanonicalArtifact(file.path, file.content, expected)
     if (file.kind === 'managed-region') {
       const artifact = managedRemovalArtifact(file)
       if (artifact !== undefined) desired.push(artifact)
@@ -56,7 +86,7 @@ async function generatedRemoval(
       removals.push(file.path)
     }
   }
-  return { sourcePaths: compilation.sourcePaths, desired, removals }
+  return { sourcePaths: compilation?.sourcePaths ?? [], desired, removals }
 }
 
 export async function runRemove(

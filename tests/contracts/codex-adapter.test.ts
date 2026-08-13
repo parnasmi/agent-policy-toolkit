@@ -3,7 +3,11 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 
 import { codexAdapter } from '../../src/adapters/codex/project.js'
-import { removeManagedRegion } from '../../src/adapters/codex/managed-region.js'
+import {
+  MANAGED_REGION_END,
+  MANAGED_REGION_START,
+  removeManagedRegion,
+} from '../../src/adapters/codex/managed-region.js'
 import type { Bundle, Rule } from '../../src/domain/policy.js'
 import { resolvePolicy } from '../../src/compiler/resolve-policy.js'
 
@@ -95,6 +99,12 @@ describe('Codex adapter contract', () => {
 
     expect(agents).toBeDefined()
     expect(removeManagedRegion(agents?.content ?? '')).toBe(existing)
+  })
+
+  it('preserves the unmanaged final newline around a single-boundary Managed Region', () => {
+    const existing = `# Existing\n${MANAGED_REGION_START}\npolicy\n${MANAGED_REGION_END}\n`
+
+    expect(removeManagedRegion(existing)).toBe('# Existing\n')
   })
 
   it('projects a bounded root region in memory while preserving unmanaged bytes', async () => {
