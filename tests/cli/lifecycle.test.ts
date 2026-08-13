@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { runCli, type CliIo } from '../../src/cli/main.js'
+import { parseYamlDocument } from '../../src/schema/frontmatter.js'
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -216,14 +217,67 @@ describe('policy lifecycle commands', () => {
         readonly sourceChanges?: readonly { readonly path: string; readonly content: string }[]
       }
       expect(savedPlan.sourceChanges).toEqual([
-        expect.objectContaining({ path: '.agent-policy/policy.yaml', content: expect.stringContaining('bundles: [react]') }),
+        expect.objectContaining({ path: '.agent-policy/policy.yaml' }),
       ])
+      expect(parseYamlDocument(savedPlan.sourceChanges?.[0]?.content ?? '', '.agent-policy/policy.yaml')).toMatchObject({
+        bundles: ['react'],
+      })
 
       await expect(runCli(['apply', planPath, '--yes'], realIo(root))).resolves.toBe(0)
-      expect(await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8')).toContain('bundles: [react]')
+      expect(parseYamlDocument(
+        await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8'),
+        '.agent-policy/policy.yaml',
+      )).toMatchObject({ bundles: ['react'] })
       await expect(runCli(['check'], realIo(root))).resolves.toBe(0)
       expect(await exists(join(root, '.agents/skills/react/SKILL.md'))).toBe(true)
       expect(await exists(join(root, '.agents/skills/typescript/SKILL.md'))).toBe(false)
+    } finally {
+      process.chdir(previousCwd)
+    }
+  })
+
+  it.each([
+    [
+      'block sequence with a comment',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: # select carefully\n  - typescript\n  # keep this note\n  - react\ntargets: [codex]\n',
+      '# select carefully',
+    ],
+    [
+      'multiline flow sequence',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\nbundles: [\n  typescript,\n  react,\n]\ntargets: [codex]\n',
+      undefined,
+    ],
+    [
+      'quoted bundles key',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.0\n"bundles": [typescript, react]\ntargets: [codex]\n',
+      undefined,
+    ],
+  ])('updates an explicit selection in valid YAML for %s', async (_form, policySource, preservedComment) => {
+    const parent = await mkdtemp(join(tmpdir(), 'agent-policy-yaml-selection-'))
+    const root = join(parent, 'consumer')
+    const planPath = join(parent, 'selection-plan.json')
+    await mkdir(join(root, '.agent-policy'), { recursive: true })
+    await writeFile(join(root, '.agent-policy/policy.yaml'), policySource)
+    const previousCwd = process.cwd()
+    process.chdir(root)
+    try {
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core,react',
+        '--plan', planPath,
+      ], realIo(root))).resolves.toBe(0)
+      expect(await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8')).toBe(policySource)
+
+      await expect(runCli(['apply', planPath, '--yes'], realIo(root))).resolves.toBe(0)
+      const appliedSource = await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8')
+      const parsed = parseYamlDocument(appliedSource, '.agent-policy/policy.yaml') as {
+        readonly bundles: readonly string[]
+      }
+      expect(parsed.bundles).toEqual(['react'])
+      expect(appliedSource).toContain('targets: [codex]')
+      if (preservedComment !== undefined) expect(appliedSource).toContain(preservedComment)
+      await expect(runCli(['check'], realIo(root))).resolves.toBe(0)
     } finally {
       process.chdir(previousCwd)
     }

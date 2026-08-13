@@ -1,6 +1,8 @@
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 
+import { isMap, isNode, isPair, isScalar, parseDocument, stringify, type Node } from 'yaml'
+
 import { loadCatalog } from '../../catalog/load-catalog.js'
 import { loadBundles } from '../../catalog/load-bundles.js'
 import { codexAdapter } from '../../adapters/codex/project.js'
@@ -180,32 +182,32 @@ export interface BundleSelectionPreparation {
 }
 
 function replaceBundleField(source: string, selected: readonly string[]): string | undefined {
-  const field = /^([ \t]*)bundles[ \t]*:[ \t]*(.*?)(\r?\n|$)/m.exec(source)
-  if (field === null || field.index === undefined) return undefined
-  const indentation = field[1] ?? ''
-  const value = field[2] ?? ''
-  const lineEnding = field[3] ?? ''
-  const newline = lineEnding.length === 0
-    ? source.match(/\r?\n/)?.[0] ?? '\n'
-    : lineEnding
-  let replacementEnd = field.index + field[0].length
-  if (value.trim().length === 0) {
-    let cursor = replacementEnd
-    while (cursor < source.length) {
-      const lineEnd = source.indexOf('\n', cursor)
-      const end = lineEnd === -1 ? source.length : lineEnd + 1
-      const line = source.slice(cursor, end).replace(/\r?\n$/, '')
-      const indentation = /^([ \t]*)/.exec(line)?.[1] ?? ''
-      if (line.trim().length === 0 || indentation.length > (field[1] ?? '').length) {
-        replacementEnd = end
-        cursor = end
-        continue
-      }
-      break
-    }
-  }
-  const replacement = `${indentation}bundles: [${selected.join(', ')}]${newline}`
-  return `${source.slice(0, field.index)}${replacement}${source.slice(replacementEnd)}`
+  const document = parseDocument<Node>(source, { customTags: [], prettyErrors: false })
+  if (document.errors.length > 0 || document.warnings.length > 0) return undefined
+  if (!isMap(document.contents)) return undefined
+  const pair = document.contents.items.find((candidate) =>
+    isPair(candidate) && isScalar(candidate.key) && candidate.key.value === 'bundles')
+  if (pair === undefined || !isPair(pair)) return undefined
+  if (!isNode(pair.value) || pair.value.range === undefined || pair.value.range === null) return undefined
+  const valueRange = pair.value.range
+
+  // Let YAML identify the semantic pair (including quoted keys), then render
+  // only that node's source range. This keeps unrelated field formatting and
+  // comments intact while normalizing every supported sequence shape.
+  pair.value = document.createNode([...selected])
+  const [valueStart, valueEnd] = valueRange
+  if (valueStart === undefined || valueEnd === undefined) return undefined
+  const lineStart = source.lastIndexOf('\n', valueStart - 1) + 1
+  const linePrefix = source.slice(lineStart, valueStart)
+  const isBlockValue = linePrefix.trim().length === 0
+  const rendered = isBlockValue
+    ? stringify([...selected]).replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n')
+      .map((line, index) => index === 0 ? line : `${linePrefix}${line}`)
+      .join('\n') + '\n'
+    : stringify([...selected], { flow: true }).trimEnd()
+  const updated = `${source.slice(0, valueStart)}${rendered}${source.slice(valueEnd)}`
+  const validation = parseDocument<Node>(updated, { customTags: [], prettyErrors: false })
+  return validation.errors.length === 0 && validation.warnings.length === 0 ? updated : undefined
 }
 
 /** Convert an explicit Bundle Selection into a reviewed canonical manifest change. */
