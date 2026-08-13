@@ -28,7 +28,7 @@ import { computePlanHash } from '../../planner/serialize-plan.js'
 import { loadProjectPolicy, type ProjectPolicySource } from '../../schema/load-project.js'
 import { parseYamlDocument } from '../../schema/frontmatter.js'
 import { validateDocument } from '../../schema/validator.js'
-import { policyLockArtifact } from '../../planner/policy-lock.js'
+import { policyLockArtifact, POLICY_LOCK_PATH } from '../../planner/policy-lock.js'
 
 export const toolkitOwner = '@agent-policy/agent-policy-toolkit'
 
@@ -503,7 +503,12 @@ export async function readChangePlan(repositoryRoot: string, path: string): Prom
   return plan
 }
 
-async function walk(root: string, current: string, output: GeneratedFile[]): Promise<void> {
+async function walk(
+  root: string,
+  current: string,
+  output: GeneratedFile[],
+  managedRegionPaths: ReadonlySet<string>,
+): Promise<void> {
   const directory = resolve(root, ...current.split('/').filter(Boolean))
   let entries
   try {
@@ -516,20 +521,47 @@ async function walk(root: string, current: string, output: GeneratedFile[]): Pro
     const relativePath = current.length === 0 ? entry.name : `${current}/${entry.name}`
     if (entry.name === '.git' || entry.name === '.agent-policy' || entry.name === 'node_modules') continue
     if (entry.isDirectory()) {
-      await walk(root, relativePath, output)
+      await walk(root, relativePath, output, managedRegionPaths)
       continue
     }
     if (!entry.isFile()) continue
     const contents = await readText(root, relativePath)
     if (contents === undefined) continue
-    if (hasManagedRegion(contents)) output.push({ path: relativePath, content: contents, kind: 'managed-region' })
-    else if (generatedOwnership(contents)) output.push({ path: relativePath, content: contents, kind: 'generated' })
+    if (managedRegionPaths.has(relativePath) && hasManagedRegion(contents)) {
+      output.push({ path: relativePath, content: contents, kind: 'managed-region' })
+    } else if (generatedOwnership(contents)) {
+      output.push({ path: relativePath, content: contents, kind: 'generated' })
+    }
   }
+}
+
+/**
+ * Paths eligible for Managed Region detection: the adapter-declared instruction
+ * entry files plus any lock-recorded managed-region artifact paths. A repository
+ * file that merely quotes the marker pair but is not one of these paths is not a
+ * toolkit-owned artifact.
+ */
+export async function knownManagedRegionPaths(root: string): Promise<ReadonlySet<string>> {
+  const paths = new Set<string>(codexAdapter.capabilities.instructionDiscovery)
+  const lock = await readText(root, POLICY_LOCK_PATH)
+  if (lock !== undefined) {
+    try {
+      const parsed = JSON.parse(lock) as {
+        readonly managedArtifactHashes?: Readonly<Record<string, { readonly operation?: unknown } | null | undefined>>
+      }
+      for (const [path, entry] of Object.entries(parsed.managedArtifactHashes ?? {})) {
+        if (entry?.operation === 'managed-region') paths.add(path)
+      }
+    } catch {
+      // Lock bytes are validated elsewhere; an unparseable lock must not hide known paths.
+    }
+  }
+  return paths
 }
 
 export async function findGeneratedFiles(root: string): Promise<readonly GeneratedFile[]> {
   const output: GeneratedFile[] = []
-  await walk(root, '', output)
+  await walk(root, '', output, await knownManagedRegionPaths(root))
   return output
 }
 
