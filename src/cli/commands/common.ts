@@ -200,10 +200,11 @@ function replaceBundleField(source: string, selected: readonly string[]): string
   const lineStart = source.lastIndexOf('\n', valueStart - 1) + 1
   const linePrefix = source.slice(lineStart, valueStart)
   const isBlockValue = linePrefix.trim().length === 0
+  const newline = source.match(/\r\n|\n|\r/)?.[0] ?? '\n'
   const rendered = isBlockValue
-    ? stringify([...selected]).replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n')
+    ? stringify([...selected]).replace(/\r\n|\n|\r$/, '').split(/\r\n|\n|\r/)
       .map((line, index) => index === 0 ? line : `${linePrefix}${line}`)
-      .join('\n') + '\n'
+      .join(newline) + newline
     : stringify([...selected], { flow: true }).trimEnd()
   const updated = `${source.slice(0, valueStart)}${rendered}${source.slice(valueEnd)}`
   const validation = parseDocument<Node>(updated, { customTags: [], prettyErrors: false })

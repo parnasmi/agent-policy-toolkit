@@ -283,6 +283,44 @@ describe('policy lifecycle commands', () => {
     }
   })
 
+  it('preserves CRLF line endings when replacing a block Bundle Selection', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'agent-policy-crlf-selection-'))
+    const root = join(parent, 'consumer')
+    const planPath = join(parent, 'selection-plan.json')
+    const policySource = [
+      'schemaVersion: v1',
+      'toolkitVersion: 0.1.0-alpha.0',
+      'bundles: # keep this comment',
+      '  - typescript',
+      '  - react',
+      'targets: [codex]',
+      '',
+    ].join('\r\n')
+    await mkdir(join(root, '.agent-policy'), { recursive: true })
+    await writeFile(join(root, '.agent-policy/policy.yaml'), policySource)
+    const previousCwd = process.cwd()
+    process.chdir(root)
+    try {
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core,react',
+        '--plan', planPath,
+      ], realIo(root))).resolves.toBe(0)
+      await expect(runCli(['apply', planPath, '--yes'], realIo(root))).resolves.toBe(0)
+      const appliedSource = await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8')
+      expect(appliedSource.endsWith('\r\n')).toBe(true)
+      expect(appliedSource.replace(/\r\n/g, '')).not.toContain('\n')
+      expect(appliedSource).toContain('# keep this comment')
+      expect(parseYamlDocument(appliedSource, '.agent-policy/policy.yaml')).toMatchObject({
+        bundles: ['react'],
+      })
+      await expect(runCli(['check'], realIo(root))).resolves.toBe(0)
+    } finally {
+      process.chdir(previousCwd)
+    }
+  })
+
   it('prints complete unchanged policy text in a generated diff', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'agent-policy-full-diff-'))
     const root = join(parent, 'consumer')
