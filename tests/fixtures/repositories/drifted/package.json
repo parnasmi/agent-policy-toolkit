@@ -1,0 +1,10 @@
+{
+  "name": "drifted-fixture",
+  "scripts": {
+    "test": "vitest",
+    "policy:check": "agent-policy check"
+  },
+  "dependencies": {
+    "@agent-policy/agent-policy-toolkit": "workspace:*"
+  }
+}

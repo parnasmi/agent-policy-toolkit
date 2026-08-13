@@ -1,0 +1,9 @@
+{
+  "name": "unmanaged-agents-fixture",
+  "scripts": {
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@agent-policy/agent-policy-toolkit": "workspace:*"
+  }
+}

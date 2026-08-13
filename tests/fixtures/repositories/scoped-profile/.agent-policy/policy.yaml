@@ -1,0 +1,13 @@
+schemaVersion: v1
+toolkitVersion: 0.1.0-alpha.0
+bundles: [typescript, react]
+targets: [codex]
+profiles:
+  web:
+    bundleIds: [typescript]
+    paths: [apps/web/**]
+    workspaces: ["@example/web"]
+  admin:
+    bundleIds: [react]
+    paths: [apps/admin/**]
+    workspaces: ["@example/admin"]
