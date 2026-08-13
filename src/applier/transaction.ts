@@ -23,8 +23,11 @@ export interface TransactionHooks {
   readonly afterPathCheck?: (
     event: { readonly phase: 'prepare' | 'backup' | 'install'; readonly path: string },
   ) => void | Promise<void>
+  readonly afterRestoreLink?: (path: string) => void | Promise<void>
   /** Test seam for deterministic filesystem-capability failures. */
-  readonly failStableOperation?: StableOperation['operation']
+  readonly failStableOperation?: StableOperation['operation'] | (
+    (operation: StableOperation['operation']) => boolean
+  )
 }
 
 interface TransactionEntry {
@@ -55,6 +58,7 @@ interface CreatedDirectory {
 
 type StableOperation =
   | { readonly operation: 'write'; readonly name: string; readonly content: string }
+  | { readonly operation: 'copy'; readonly from: string; readonly to: string }
   | { readonly operation: 'rename'; readonly from: string; readonly to: string }
   | { readonly operation: 'link'; readonly from: string; readonly to: string }
   | { readonly operation: 'remove'; readonly name: string }
@@ -121,6 +125,20 @@ try {
     } finally {
       await handle.close()
     }
+  } else if (command.operation === 'copy') {
+    const content = await readFile(safeName(command.from))
+    const handle = await open(safeName(command.to), 'wx')
+    try {
+      await handle.writeFile(content)
+      try {
+        await handle.sync()
+      } catch (error) {
+        if (!['EINVAL', 'ENOSYS', 'ENOTSUP'].includes(error?.code)) throw error
+      }
+    } finally {
+      await handle.close()
+    }
+    result.hash = createHash('sha256').update(content).digest('hex')
   } else if (command.operation === 'rename') {
     await rename(safeName(command.from), safeName(command.to))
   } else if (command.operation === 'link') {
@@ -192,7 +210,10 @@ async function runStableOperation(
   command: StableOperation,
   hooks?: TransactionHooks,
 ): Promise<StableOperationResult> {
-  if (hooks?.failStableOperation === command.operation) {
+  const injectedFailure = typeof hooks?.failStableOperation === 'function'
+    ? hooks.failStableOperation(command.operation)
+    : hooks?.failStableOperation === command.operation
+  if (injectedFailure) {
     throw new StableFilesystemError(
       `Filesystem operation ${command.operation} is unsupported`,
       'ENOTSUP',
@@ -368,15 +389,31 @@ async function restoreBackupWithoutOverwrite(
   hooks?: TransactionHooks,
 ): Promise<void> {
   if (entry.backupPath === undefined) return
-  await runStableOperation(entryParent(entry), {
-    operation: 'link',
+  const copied = await runStableOperation(entryParent(entry), {
+    operation: 'copy',
     from: entryName(entry, entry.backupPath),
-    to: entryName(entry, entry.operation.targetPath),
+    to: entryName(entry, entry.recoveryPath),
   }, hooks)
-  await runStableOperation(entryParent(entry), {
-    operation: 'remove',
+  const backup = await runStableOperation(entryParent(entry), {
+    operation: 'hash',
     name: entryName(entry, entry.backupPath),
   })
+  if (copied.hash !== backup.hash) {
+    throw new Error(`original backup changed while preparing restore; preserved at ${entry.backupPath}`)
+  }
+  try {
+    await runStableOperation(entryParent(entry), {
+      operation: 'link',
+      from: entryName(entry, entry.recoveryPath),
+      to: entryName(entry, entry.operation.targetPath),
+    }, hooks)
+    await hooks?.afterRestoreLink?.(entry.operation.relativePath)
+  } finally {
+    await runStableOperation(entryParent(entry), {
+      operation: 'remove',
+      name: entryName(entry, entry.recoveryPath),
+    })
+  }
 }
 
 async function prepareTemporary(entry: TransactionEntry): Promise<void> {
@@ -489,12 +526,7 @@ export async function applyTransaction(
           name: entryName(entry, entry.backupPath),
         })
         if (backedUp.hash !== entry.operation.expectedCurrentSha256) {
-          await runStableOperation(entryParent(entry), {
-            operation: 'rename',
-            from: entryName(entry, entry.backupPath),
-            to: entryName(entry, entry.operation.targetPath),
-          })
-          entry.backupCreated = false
+          await restoreBackupWithoutOverwrite(entry, hooks)
           throw new Error(`Artifact changed at mutation boundary: ${entry.operation.relativePath}`)
         }
         const backupIdentity = await runStableOperation(entryParent(entry), {
@@ -691,7 +723,9 @@ export async function applyTransaction(
             throw new Error(`original backup identity changed; preserved at ${entry.backupPath}`)
           }
           await restoreBackupWithoutOverwrite(entry, hooks)
-          entry.backupCreated = false
+          rollbackFailures.push(
+            `${entry.operation.relativePath}: original backup retained at ${entry.backupPath} after no-clobber restore`,
+          )
         } catch (rollbackError) {
           rollbackFailures.push(
             `${entry.operation.relativePath}: backup preserved at ${entry.backupPath}; ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,

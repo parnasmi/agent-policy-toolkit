@@ -285,12 +285,14 @@ describe('transactional plan application', () => {
     expect(result).toMatchObject({
       ok: false,
       code: 'transaction-failed',
-      rollbackFailures: [],
+      rollbackFailures: [expect.stringMatching(/a-owned\.md.*backup retained/i)],
     })
     expect(await readFile(join(root, 'a-owned.md'), 'utf8')).toBe(previous)
     await expectMissing(join(root, 'nested/b-new.md'))
     await expectMissing(join(root, 'nested'))
-    await expectNoTransactionDebris(root)
+    const backup = (await readdir(root)).find((name) => name.endsWith('.backup'))
+    if (backup === undefined) throw new Error('expected retained original backup')
+    expect(await readFile(join(root, backup), 'utf8')).toBe(previous)
   })
 
   it('preserves a concurrently edited installed target and its original backup on rollback', async () => {
@@ -512,6 +514,63 @@ describe('transactional plan application', () => {
     expect(await readFile(join(root, 'owned.md'), 'utf8')).toBe(generated('concurrent\n'))
   })
 
+  it('does not clobber a target appearing during pre-install hash-mismatch recovery', async () => {
+    const { parent, root } = await sandbox()
+    const previous = generated('old\n')
+    await writeFile(join(root, 'owned.md'), previous)
+    const reviewed = await plan(parent, root, [artifact('owned.md', generated('reviewed\n'))])
+    const hooks: TransactionHooks = {
+      afterPathCheck: async ({ phase }) => {
+        if (phase !== 'backup') return
+        await writeFile(join(root, 'owned.md'), generated('changed before backup\n'))
+      },
+      afterRestoreLink: async () => {
+        await writeFile(join(root, 'owned.md'), 'concurrent recovery target\n')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    if (result.ok) throw new Error('expected mutation hash failure')
+    expect(result.message).toMatch(/ROLLBACK FAILED.*backup preserved/i)
+    expect(await readFile(join(root, 'owned.md'), 'utf8')).toBe('concurrent recovery target\n')
+    const backup = (await readdir(root)).find((name) => name.endsWith('.backup'))
+    if (backup === undefined) throw new Error('expected recoverable backup')
+    expect(await readFile(join(root, backup), 'utf8')).toBe(generated('changed before backup\n'))
+  })
+
+  it('retains and reports a backup when a restored hard link is truncated before cleanup', async () => {
+    const { parent, root } = await sandbox()
+    const previous = generated('old\n')
+    await writeFile(join(root, 'owned.md'), previous)
+    const reviewed = await plan(parent, root, [artifact('owned.md', generated('reviewed\n'))])
+    let linkCalls = 0
+    const hooks: TransactionHooks = {
+      failStableOperation: (operation) => operation === 'link' && ++linkCalls === 1,
+      afterRestoreLink: async () => {
+        await writeFile(join(root, 'owned.md'), 'truncated after restore link\n')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    if (result.ok) throw new Error('expected rollback recovery retention')
+    expect(result.message).toMatch(/ROLLBACK FAILED.*backup preserved|retained/i)
+    const backup = (await readdir(root)).find((name) => name.endsWith('.backup'))
+    if (backup === undefined) throw new Error('expected recoverable backup')
+    expect(await readFile(join(root, backup), 'utf8')).toBe(previous)
+  })
+
   it('preserves a concurrent target that appears before backup restoration', async () => {
     const { parent, root } = await sandbox()
     const previous = generated('old\n')
@@ -690,11 +749,13 @@ describe('transactional plan application', () => {
     expect(result).toMatchObject({
       ok: false,
       code: 'transaction-failed',
-      rollbackFailures: [],
+      rollbackFailures: [expect.stringMatching(/linked\/sub\/owned\.md.*backup retained/i)],
     })
     expect(await readFile(join(root, 'actual/sub/owned.md'), 'utf8')).toBe(generated('old\n'))
     await expectMissing(join(root, 'actual/sub/second.md'))
-    await expectNoTransactionDebris(join(root, 'actual/sub'))
+    const backup = (await readdir(join(root, 'actual/sub'))).find((name) => name.endsWith('.backup'))
+    if (backup === undefined) throw new Error('expected retained original backup')
+    expect(await readFile(join(root, 'actual/sub', backup), 'utf8')).toBe(generated('old\n'))
   })
 
   it('revalidates confinement immediately before preparing a sibling temporary', async () => {
