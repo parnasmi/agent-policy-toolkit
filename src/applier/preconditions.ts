@@ -296,7 +296,10 @@ export async function revalidatePreconditions(
     if (artifact.operation === 'managed-region') {
       const expectedRegionHash = plan.currentManagedRegionHashes?.[artifact.path]
       if (expectedRegionHash === undefined) {
-        if (ownership.state !== 'unmanaged') {
+        const legacyOwnedRegion = plan.currentManagedRegionHashes === undefined
+          && ownership.managedRegionSha256 !== undefined
+          && ownership.state !== 'invalid-marker'
+        if (!legacyOwnedRegion && ownership.state !== 'unmanaged') {
           return failure('ownership-drift', `Managed Region ownership changed: ${artifact.path}`, [artifact.path])
         }
       } else if (ownership.managedRegionSha256 === undefined) {

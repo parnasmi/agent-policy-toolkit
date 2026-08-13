@@ -462,11 +462,15 @@ describe('transactional plan application', () => {
 
     expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
     if (result.ok) throw new Error('expected unsupported-link failure')
-    expect(result.message).toMatch(/link is unsupported.*rollback completed successfully/i)
-    expect(result.rollbackFailures).toEqual([])
-    expect(await readFile(join(root, 'owned.md'), 'utf8')).toBe(previous)
-    expect((await readdir(root)).filter((name) =>
-      name.includes('.agent-policy-transaction-'))).toEqual([])
+    expect(result.message).toMatch(/link is unsupported.*ROLLBACK FAILED.*backup preserved/i)
+    expect(result.rollbackFailures).toEqual([
+      expect.stringMatching(/owned\.md.*backup preserved.*link is unsupported/i),
+    ])
+    await expectMissing(join(root, 'owned.md'))
+    const backup = (await readdir(root)).find((name) => name.endsWith('.backup'))
+    if (backup === undefined) throw new Error('expected recoverable original backup')
+    expect(await readFile(join(root, backup), 'utf8')).toBe(previous)
+    expect((await readdir(root)).filter((name) => name.endsWith('.tmp'))).toEqual([])
   })
 
   it('rejects a prepared temporary tampered immediately before installation', async () => {
@@ -506,6 +510,36 @@ describe('transactional plan application', () => {
 
     expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
     expect(await readFile(join(root, 'owned.md'), 'utf8')).toBe(generated('concurrent\n'))
+  })
+
+  it('preserves a concurrent target that appears before backup restoration', async () => {
+    const { parent, root } = await sandbox()
+    const previous = generated('old\n')
+    await writeFile(join(root, 'owned.md'), previous)
+    const reviewed = await plan(parent, root, [artifact('owned.md', generated('reviewed\n'))])
+    const hooks: TransactionHooks = {
+      failStableOperation: 'link',
+      beforeRename: async ({ phase }) => {
+        if (phase === 'restore') {
+          await writeFile(join(root, 'owned.md'), 'concurrent visible work\n')
+        }
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    if (result.ok) throw new Error('expected transaction failure')
+    expect(result.message).toMatch(/ROLLBACK FAILED/i)
+    expect(await readFile(join(root, 'owned.md'), 'utf8')).toBe('concurrent visible work\n')
+    expect(result.rollbackFailures).toEqual([
+      expect.stringMatching(/owned\.md.*backup.*preserved/i),
+    ])
+    expect((await readdir(root)).some((name) => name.endsWith('.backup'))).toBe(true)
   })
 
   it('rejects a plan whose canonical hash is invalid', async () => {
@@ -802,6 +836,26 @@ describe('transactional plan application', () => {
 
     expect(result).toMatchObject({ ok: true })
     expect(await readFile(join(root, 'new.md'), 'utf8')).toBe(generated('new\n'))
+  })
+
+  it('applies a prior Task 9 Managed Region plan without region hash metadata', async () => {
+    const { parent, root } = await sandbox()
+    const previous = `# Team\n\n${start}\nold\n${end}\n`
+    const desired = `# Team\n\n${start}\nnew\n${end}\n`
+    await writeFile(join(root, 'AGENTS.md'), previous)
+    const reviewed = await plan(parent, root, [artifact('AGENTS.md', desired, 'managed-region')])
+    const { currentManagedRegionHashes: _newField, ...priorFields } = reviewed
+    const priorWithoutHash = { ...priorFields, schemaVersion: '1', planHash: undefined }
+    const priorPlan = {
+      ...priorFields,
+      schemaVersion: '1',
+      planHash: computePlanHash(priorWithoutHash),
+    } as ChangePlan
+
+    const result = await applyPlan(priorPlan, { repositoryRoot: root, toolkitVersion })
+
+    expect(result).toMatchObject({ ok: true })
+    expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toBe(desired)
   })
 })
 

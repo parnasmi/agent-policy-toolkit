@@ -365,12 +365,17 @@ async function assertMutationPath(
 
 async function restoreBackupWithoutOverwrite(
   entry: TransactionEntry,
+  hooks?: TransactionHooks,
 ): Promise<void> {
   if (entry.backupPath === undefined) return
   await runStableOperation(entryParent(entry), {
-    operation: 'rename',
+    operation: 'link',
     from: entryName(entry, entry.backupPath),
     to: entryName(entry, entry.operation.targetPath),
+  }, hooks)
+  await runStableOperation(entryParent(entry), {
+    operation: 'remove',
+    name: entryName(entry, entry.backupPath),
   })
 }
 
@@ -685,11 +690,11 @@ export async function applyTransaction(
           ) {
             throw new Error(`original backup identity changed; preserved at ${entry.backupPath}`)
           }
-          await restoreBackupWithoutOverwrite(entry)
+          await restoreBackupWithoutOverwrite(entry, hooks)
           entry.backupCreated = false
         } catch (rollbackError) {
           rollbackFailures.push(
-            `${entry.operation.relativePath}: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+            `${entry.operation.relativePath}: backup preserved at ${entry.backupPath}; ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
           )
         }
       }
