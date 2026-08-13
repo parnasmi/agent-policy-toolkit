@@ -172,7 +172,8 @@ export async function createChangePlan(request: PlanRequest): Promise<ChangePlan
       if (inspection.state === 'invalid-marker') {
         throw new Error(`Invalid Managed Region markers in current artifact: ${artifact.path}`)
       }
-      if (inspection.state === 'clean') continue
+      if (inspection.state === 'clean' && artifact.operation !== 'managed-region-remove') continue
+      if (inspection.state === 'missing' && artifact.operation === 'managed-region-remove') continue
       if (inspection.currentSha256 !== undefined) {
         currentArtifactHashes[artifact.path] = inspection.currentSha256
       }
@@ -183,7 +184,9 @@ export async function createChangePlan(request: PlanRequest): Promise<ChangePlan
         ...artifact,
         operation: artifact.operation === 'managed-region'
           ? 'managed-region'
-          : inspection.state === 'missing' ? 'create' : 'replace',
+          : artifact.operation === 'managed-region-remove'
+            ? 'managed-region-remove'
+            : inspection.state === 'missing' ? 'create' : 'replace',
       })
     }
 

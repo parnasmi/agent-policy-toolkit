@@ -1,4 +1,10 @@
-export type ArtifactOperation = 'create' | 'replace' | 'delete' | 'managed-region'
+export type ArtifactOperation =
+  | 'create'
+  | 'replace'
+  | 'delete'
+  | 'managed-region'
+  /** Replace an owned Managed Region with the surrounding user-owned text. */
+  | 'managed-region-remove'
 
 export interface VirtualArtifact {
   /** Repository-relative POSIX path. */

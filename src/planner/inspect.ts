@@ -29,6 +29,8 @@ const sentinelPattern = /agent-policy:(?:start|end)/g
 interface ManagedRegion {
   readonly kind: 'absent' | 'valid' | 'invalid'
   readonly content?: string
+  readonly start?: number
+  readonly end?: number
 }
 
 function managedRegion(source: string): ManagedRegion {
@@ -57,6 +59,8 @@ function managedRegion(source: string): ManagedRegion {
   return {
     kind: 'valid',
     content: source.slice(startIndex, endIndex + MANAGED_REGION_END.length),
+    start: startIndex,
+    end: endIndex + MANAGED_REGION_END.length,
   }
 }
 
@@ -150,6 +154,29 @@ export async function inspectArtifact(
   }
 
   const currentSha256 = sha256Utf8(currentContent)
+  if (artifact.operation === 'managed-region-remove') {
+    const currentRegion = managedRegion(currentContent)
+    if (currentRegion.kind === 'invalid') {
+      return { path: normalized, state: 'invalid-marker', currentContent, currentSha256 }
+    }
+    if (currentRegion.kind === 'absent') {
+      return {
+        path: normalized,
+        state: currentContent === artifact.content ? 'clean' : 'unmanaged',
+        currentContent,
+        currentSha256,
+      }
+    }
+    const withoutRegion = `${currentContent.slice(0, currentRegion.start)}${currentContent.slice(currentRegion.end)}`
+    return {
+      path: normalized,
+      state: withoutRegion === artifact.content ? 'clean' : 'managed-drift',
+      currentContent,
+      currentSha256,
+      managedRegionSha256: sha256Utf8(currentRegion.content ?? ''),
+    }
+  }
+
   if (artifact.operation !== 'managed-region') {
     if (currentSha256 === artifact.sha256 && currentContent === artifact.content) {
       return { path: normalized, state: 'clean', currentContent, currentSha256 }

@@ -161,7 +161,9 @@ function validatePlanShape(plan: ChangePlan): ApplyFailure | undefined {
     }
     const desiredIsOwned = artifact.operation === 'managed-region'
       ? hasExactManagedRegionOwnership(artifact.content, artifact.owner)
-      : hasExactGeneratedOwnership(artifact.content, artifact.owner)
+      : artifact.operation === 'managed-region-remove'
+        ? !/agent-policy:(?:start|end)/.test(artifact.content)
+        : hasExactGeneratedOwnership(artifact.content, artifact.owner)
     if (!desiredIsOwned) {
       return failure('invalid-plan', `Desired artifact is missing exact ownership: ${artifact.path}`, [artifact.path])
     }
@@ -172,7 +174,7 @@ function validatePlanShape(plan: ChangePlan): ApplyFailure | undefined {
     if (
       artifact.operation === 'replace'
       || (
-        artifact.operation === 'managed-region'
+        (artifact.operation === 'managed-region' || artifact.operation === 'managed-region-remove')
         && plan.currentArtifactHashes[artifact.path] !== undefined
       )
     ) {
@@ -189,7 +191,7 @@ function validatePlanShape(plan: ChangePlan): ApplyFailure | undefined {
 
   const managedPaths = new Set(
     plan.desiredArtifacts
-      .filter(({ operation }) => operation === 'managed-region')
+      .filter(({ operation }) => operation === 'managed-region' || operation === 'managed-region-remove')
       .map(({ path }) => path),
   )
   if (exactKeys(plan.currentManagedRegionHashes ?? {}).some((path) => !managedPaths.has(path))) {
@@ -277,6 +279,9 @@ export async function revalidatePreconditions(
     const current = await readCurrent(targetPath)
     const expectedHash = plan.currentArtifactHashes[artifact.path]
     if (expectedHash === undefined) {
+      if (artifact.operation === 'managed-region-remove') {
+        return failure('invalid-plan', `Managed Region removal requires an existing target: ${artifact.path}`, [artifact.path])
+      }
       if (current !== undefined) {
         return failure('artifact-drift', `Target appeared after review: ${artifact.path}`, [artifact.path])
       }
@@ -293,8 +298,14 @@ export async function revalidatePreconditions(
     }
 
     const ownership = await inspectArtifact(repositoryRoot, artifact)
-    if (artifact.operation === 'managed-region') {
+    if (artifact.operation === 'managed-region' || artifact.operation === 'managed-region-remove') {
       const expectedRegionHash = plan.currentManagedRegionHashes?.[artifact.path]
+      if (artifact.operation === 'managed-region-remove' && !hasExactManagedRegionOwnership(current, artifact.owner)) {
+        return failure('ownership-drift', `Managed Region ownership changed: ${artifact.path}`, [artifact.path])
+      }
+      if (artifact.operation === 'managed-region-remove' && ownership.state !== 'clean') {
+        return failure('ownership-drift', `Managed Region removal would alter unmanaged text: ${artifact.path}`, [artifact.path])
+      }
       if (expectedRegionHash === undefined) {
         const legacyOwnedRegion = plan.currentManagedRegionHashes === undefined
           && ownership.managedRegionSha256 !== undefined
@@ -313,7 +324,9 @@ export async function revalidatePreconditions(
     operations.push({
       relativePath: artifact.path,
       targetPath,
-      content: artifact.content,
+      content: artifact.operation === 'managed-region-remove' && artifact.content.length === 0
+        ? undefined
+        : artifact.content,
       existed: true,
       expectedCurrentSha256: expectedHash,
     })
