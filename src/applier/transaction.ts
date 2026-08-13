@@ -23,6 +23,8 @@ export interface TransactionHooks {
   readonly afterPathCheck?: (
     event: { readonly phase: 'prepare' | 'backup' | 'install'; readonly path: string },
   ) => void | Promise<void>
+  /** Test seam for deterministic filesystem-capability failures. */
+  readonly failStableOperation?: StableOperation['operation']
 }
 
 interface TransactionEntry {
@@ -188,7 +190,14 @@ class StableFilesystemError extends Error {
 async function runStableOperation(
   parent: StableParent,
   command: StableOperation,
+  hooks?: TransactionHooks,
 ): Promise<StableOperationResult> {
+  if (hooks?.failStableOperation === command.operation) {
+    throw new StableFilesystemError(
+      `Filesystem operation ${command.operation} is unsupported`,
+      'ENOTSUP',
+    )
+  }
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(
       process.execPath,
@@ -516,7 +525,7 @@ export async function applyTransaction(
           operation: 'link',
           from: entryName(entry, entry.temporaryPath),
           to: entryName(entry, entry.operation.targetPath),
-        })
+        }, hooks)
         entry.installed = true
         const installedIdentity = await runStableOperation(entryParent(entry), {
           operation: 'stat',

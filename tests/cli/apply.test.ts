@@ -447,6 +447,28 @@ describe('transactional plan application', () => {
     expect(await readFile(join(root, 'new.md'), 'utf8')).toBe('concurrent user data\n')
   })
 
+  it('fails safely when hard-link installation is unsupported without rename fallback', async () => {
+    const { parent, root } = await sandbox()
+    const previous = generated('old\n')
+    await writeFile(join(root, 'owned.md'), previous)
+    const reviewed = await plan(parent, root, [artifact('owned.md', generated('reviewed\n'))])
+    const hooks: TransactionHooks = { failStableOperation: 'link' }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed' })
+    if (result.ok) throw new Error('expected unsupported-link failure')
+    expect(result.message).toMatch(/link is unsupported.*rollback completed successfully/i)
+    expect(result.rollbackFailures).toEqual([])
+    expect(await readFile(join(root, 'owned.md'), 'utf8')).toBe(previous)
+    expect((await readdir(root)).filter((name) =>
+      name.includes('.agent-policy-transaction-'))).toEqual([])
+  })
+
   it('rejects a prepared temporary tampered immediately before installation', async () => {
     const { parent, root } = await sandbox()
     const reviewed = await plan(parent, root, [artifact('new.md', generated('reviewed\n'))])
