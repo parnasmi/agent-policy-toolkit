@@ -36,6 +36,26 @@ function diagnosticsFrom(action: () => unknown): readonly { path: string; messag
 }
 
 describe('canonical source schema validation', () => {
+  it('loads a manifest override without creating the missing manifest', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-policy-schema-'))
+    const manifest = [
+      'schemaVersion: v1',
+      'toolkitVersion: 0.1.0-alpha.1',
+      'bundles: [react]',
+      'targets: [codex]',
+      '',
+    ].join('\n')
+
+    await expect(loadProjectPolicy(root, { manifestOverride: manifest })).resolves.toMatchObject({
+      path: '.agent-policy/policy.yaml',
+      toolkitVersion: '0.1.0-alpha.1',
+      bundles: ['react'],
+      targets: ['codex'],
+      overlayPaths: [],
+    })
+    await expect(readFile(join(root, '.agent-policy', 'policy.yaml'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('accepts canonical and legacy alias overlay targets', () => {
     expect(validateDocument('overlay-v1', {
       ruleId: 'RULE_TASK_FIDELITY',

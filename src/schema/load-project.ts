@@ -23,6 +23,10 @@ export interface ProjectPolicySource extends ProjectPolicy {
   readonly invariantsPath?: string
 }
 
+export interface LoadProjectPolicyOptions {
+  readonly manifestOverride?: string
+}
+
 /** Load the generated lock when present; lock bytes are never treated as canonical policy. */
 export async function loadPolicyLock(root: string): Promise<ProjectPolicyLock | undefined> {
   const repositoryRoot = resolve(root)
@@ -201,14 +205,20 @@ async function readOptionalInvariants(
 }
 
 /** Load the declared project policy sources without creating or modifying any consumer files. */
-export async function loadProjectPolicy(root: string): Promise<ProjectPolicySource> {
+export async function loadProjectPolicy(
+  root: string,
+  options: LoadProjectPolicyOptions = {},
+): Promise<ProjectPolicySource> {
   const repositoryRoot = resolve(root)
   const policyDirectory = resolve(repositoryRoot, '.agent-policy')
   const manifestFile = resolveDeclaredFile(repositoryRoot, policyDirectory, 'policy.yaml')
   const manifestPath = sourcePathFor(repositoryRoot, manifestFile)
   const manifest = validateDocument<ProjectPolicyManifest>(
     'project-policy-v1',
-    parseYamlDocument(await readDeclaredFile(repositoryRoot, policyDirectory, manifestFile), manifestPath),
+    parseYamlDocument(
+      options.manifestOverride ?? await readDeclaredFile(repositoryRoot, policyDirectory, manifestFile),
+      manifestPath,
+    ),
     manifestPath,
   )
   const invariants = await readOptionalInvariants(repositoryRoot, policyDirectory)
