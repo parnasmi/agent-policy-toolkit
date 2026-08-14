@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { PolicyError } from '../../src/domain/diagnostics.js'
 import { createMigrationRegistry, migrateProject, type ProjectMigrator } from '../../src/compiler/migrations.js'
 
-const v1Source = 'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: [core]\ntargets: [codex]\n'
+const v1Source = 'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.2\nbundles: [core]\ntargets: [codex]\n'
 
 describe('project schema migrations', () => {
   it('returns same-version source bytes unchanged through the v1 empty chain', () => {

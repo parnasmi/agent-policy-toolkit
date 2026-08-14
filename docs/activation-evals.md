@@ -41,7 +41,7 @@ corepack pnpm check
 
 An Activation Eval must exercise actual model/harness selection behavior against the fixture prompts (or an explicitly versioned equivalent) and record at least the model, harness/version, prompt set, expected labels, observed selections, false-positive and false-negative cases, aggregation, and acceptance threshold. It must be rerunnable independently of catalog parsing and projection tests.
 
-No model-based Activation Eval has been run or claimed for `0.1.0-alpha.1`. No fixture pass is evidence of semantic activation quality. A future eval gate may change support or bundle metadata only after its results are reviewed; deterministic fixture validation remains necessary but is not sufficient.
+No model-based Activation Eval has been run or claimed for `0.1.0-alpha.2`. No fixture pass is evidence of semantic activation quality. A future eval gate may change support or bundle metadata only after its results are reviewed; deterministic fixture validation remains necessary but is not sufficient.
 
 ## Dogfood observations
 

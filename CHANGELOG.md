@@ -2,6 +2,16 @@
 
 All notable changes to Agent Policy Toolkit are documented here.
 
+## [0.1.0-alpha.2] - 2026-08-14
+
+### Fixed
+
+- `agent-policy init` can now plan initialization in a fresh consumer repository without a pre-existing `.agent-policy/policy.yaml`. When `.agent-policy/policy.yaml` is absent, initialization stages a minimal in-memory manifest and records it as a `create` canonical source change in the external Change Plan.
+- Planning and diff operations remain strictly read-only; canonical sources (`.agent-policy/policy.yaml`, `.agent-policy/policy.lock.json`) and projections (`AGENTS.md`, `.agents/skills/`) are created only when applying the reviewed Change Plan.
+- Canonical source creation is enforced as an absence precondition during planning and apply, rejecting preexisting target files and detecting drift if a bootstrap file appears after planning.
+- Added symlink boundary checks that reject `.agent-policy` paths or ancestor directories resolving outside the repository or pointing to dangling targets before evaluating overrides or staging bootstrap.
+- Transactional application applies multiple canonical source creations atomically with rollback support upon failure.
+
 ## [0.1.0-alpha.1] - 2026-08-13
 
 ### Fixed

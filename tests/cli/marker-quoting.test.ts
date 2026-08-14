@@ -39,7 +39,7 @@ async function consumer(): Promise<{ readonly parent: string; readonly root: str
     join(root, '.agent-policy/policy.yaml'),
     [
       'schemaVersion: v1',
-      'toolkitVersion: 0.1.0-alpha.1',
+      'toolkitVersion: 0.1.0-alpha.2',
       'bundles: [typescript]',
       'targets: [codex]',
       '',
@@ -128,7 +128,7 @@ describe('marker-quoting documentation is never treated as toolkit-owned', () =>
       const policyPath = join(root, '.agent-policy/policy.yaml')
       await writeFile(policyPath, [
         'schemaVersion: v1',
-        'toolkitVersion: 0.1.0-alpha.1',
+        'toolkitVersion: 0.1.0-alpha.2',
         'bundles: []',
         'targets: [codex]',
         '',

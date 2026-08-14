@@ -10,7 +10,7 @@ import type { VirtualArtifact } from '../../src/domain/artifacts.js'
 import { createChangePlan } from '../../src/planner/create-plan.js'
 
 const owner = '@agent-policy/agent-policy-toolkit'
-const toolkitVersion = '0.1.0-alpha.1'
+const toolkitVersion = '0.1.0-alpha.2'
 
 function hash(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex')

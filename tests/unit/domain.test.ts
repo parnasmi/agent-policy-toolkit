@@ -28,7 +28,7 @@ const artifact = {
 const changePlan = {
   schemaVersion: '1',
   command: 'init',
-  toolkitVersion: '0.1.0-alpha.1',
+  toolkitVersion: '0.1.0-alpha.2',
   repositoryRootFingerprint: 'root-fingerprint',
   sourceHashes: { '.agent-policy/policy.yaml': 'source-hash' },
   currentArtifactHashes: {},
