@@ -1,4 +1,4 @@
-import { access, constants, cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { access, constants, cp, mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -29,7 +29,225 @@ function realIo(root: string, confirm = false, confirmFn?: () => Promise<boolean
   }
 }
 
+interface ConsumerSnapshotEntry {
+  readonly path: string
+  readonly kind: 'directory' | 'file' | 'symlink' | 'other'
+  readonly bytes?: string
+  readonly linkTarget?: string
+}
+
+async function snapshotConsumer(root: string, relative = ''): Promise<readonly ConsumerSnapshotEntry[]> {
+  const directory = join(root, relative)
+  const entries = await readdir(directory, { withFileTypes: true })
+  const snapshot: ConsumerSnapshotEntry[] = []
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    const path = relative.length === 0 ? entry.name : `${relative}/${entry.name}`
+    if (entry.isDirectory()) {
+      snapshot.push({ path, kind: 'directory' })
+      snapshot.push(...await snapshotConsumer(root, path))
+    } else if (entry.isFile()) {
+      snapshot.push({
+        path,
+        kind: 'file',
+        bytes: (await readFile(join(root, path))).toString('base64'),
+      })
+    } else if (entry.isSymbolicLink()) {
+      snapshot.push({ path, kind: 'symlink', linkTarget: await readlink(join(root, path)) })
+    } else {
+      snapshot.push({ path, kind: 'other' })
+    }
+  }
+  return snapshot
+}
+
 describe('policy lifecycle commands', () => {
+  it('stages, applies, checks, and removes a fresh consumer without rewriting its sources', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'agent-policy-fresh-lifecycle-'))
+    const root = join(parent, 'consumer')
+    const planPath = join(parent, 'fresh-init-plan.json')
+    const removePlanPath = join(parent, 'fresh-remove-plan.json')
+    const retryPlanPath = join(parent, 'fresh-retry-plan.json')
+    const unmanagedAgents = '# Team instructions\nKeep this prose byte-for-byte.\n'
+    const handAuthoredSkill = '# Team-only skill\n\nKeep these hand-authored bytes unchanged.\n'
+    const canonicalManifest = [
+      'schemaVersion: v1',
+      'toolkitVersion: 0.1.0-alpha.1',
+      'bundles:',
+      '  - react',
+      'targets:',
+      '  - codex',
+      '',
+    ].join('\n')
+    await mkdir(root, { recursive: true })
+    await writeFile(join(root, 'AGENTS.md'), unmanagedAgents)
+    await mkdir(join(root, '.agents/skills/team-only'), { recursive: true })
+    await writeFile(join(root, '.agents/skills/team-only/SKILL.md'), handAuthoredSkill)
+
+    const previousCwd = process.cwd()
+    process.chdir(root)
+    try {
+      const repositoryRoot = process.cwd()
+      const beforeInit = await snapshotConsumer(root)
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core,react',
+        '--plan', planPath,
+      ], realIo(root))).resolves.toBe(0)
+      expect(await snapshotConsumer(root)).toEqual(beforeInit)
+      expect(await exists(join(root, '.agent-policy/policy.yaml'))).toBe(false)
+
+      const plan = JSON.parse(await readFile(planPath, 'utf8')) as {
+        readonly sourceHashes: Record<string, string>
+        readonly sourceChanges: readonly { readonly path: string; readonly content: string; readonly operation: string }[]
+      }
+      expect(plan.sourceHashes).toEqual({})
+      expect(plan.sourceChanges).toEqual([{
+        path: '.agent-policy/policy.yaml',
+        content: canonicalManifest,
+        operation: 'create',
+        sha256: expect.any(String),
+      }])
+
+      const diff = realIo(root)
+      await expect(runCli(['diff', planPath], diff)).resolves.toBe(0)
+      expect(diff.stdout).toContain('expected: absent')
+      expect(diff.stdout).toContain(`+++ ${join(repositoryRoot, '.agent-policy/policy.yaml')} (new)`)
+      expect(await snapshotConsumer(root)).toEqual(beforeInit)
+
+      const missingCheck = realIo(root)
+      await expect(runCli(['check'], missingCheck)).resolves.toBe(1)
+      expect(await snapshotConsumer(root)).toEqual(beforeInit)
+      await expect(runCli([
+        'remove',
+        '--target', 'codex',
+        '--plan', removePlanPath,
+      ], realIo(root))).resolves.toBe(1)
+      expect(await exists(removePlanPath)).toBe(false)
+      expect(await snapshotConsumer(root)).toEqual(beforeInit)
+
+      await expect(runCli(['apply', planPath, '--yes'], realIo(root))).resolves.toBe(0)
+      expect(await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8')).toBe(canonicalManifest)
+      expect(await exists(join(root, '.agent-policy/policy.lock.json'))).toBe(true)
+      const appliedAgents = await readFile(join(root, 'AGENTS.md'), 'utf8')
+      const managedStart = appliedAgents.indexOf('<!-- agent-policy:start')
+      const managedEnd = appliedAgents.indexOf('<!-- agent-policy:end -->', managedStart)
+      expect(appliedAgents).toContain('Implement the explicit task without speculative scope expansion.')
+      expect(managedStart).toBeGreaterThanOrEqual(0)
+      expect(managedEnd).toBeGreaterThan(managedStart)
+      expect(appliedAgents.slice(0, managedStart)).toBe(`${unmanagedAgents}\n`)
+      expect(appliedAgents.slice(managedEnd + '<!-- agent-policy:end -->'.length)).toBe('\n')
+      expect(await exists(join(root, '.agents/skills/react/SKILL.md'))).toBe(true)
+      expect(await readFile(join(root, '.agents/skills/team-only/SKILL.md'), 'utf8')).toBe(handAuthoredSkill)
+
+      const beforeCheck = await snapshotConsumer(root)
+      await expect(runCli(['check'], realIo(root))).resolves.toBe(0)
+      expect(await snapshotConsumer(root)).toEqual(beforeCheck)
+
+      await expect(runCli([
+        'remove',
+        '--target', 'codex',
+        '--plan', removePlanPath,
+      ], realIo(root))).resolves.toBe(0)
+      await expect(runCli(['apply', removePlanPath, '--yes'], realIo(root))).resolves.toBe(0)
+      expect(await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8')).toBe(canonicalManifest)
+      expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toBe(unmanagedAgents)
+      expect(await readFile(join(root, '.agents/skills/team-only/SKILL.md'), 'utf8')).toBe(handAuthoredSkill)
+      expect(await exists(join(root, '.agents/skills/core/SKILL.md'))).toBe(false)
+      expect(await exists(join(root, '.agents/skills/react/SKILL.md'))).toBe(false)
+
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core,react',
+        '--plan', retryPlanPath,
+      ], realIo(root))).resolves.toBe(0)
+      const retryPlan = JSON.parse(await readFile(retryPlanPath, 'utf8')) as {
+        readonly sourceChanges?: readonly unknown[]
+      }
+      expect(retryPlan.sourceChanges).toBeUndefined()
+      await expect(runCli(['apply', retryPlanPath, '--yes'], realIo(root))).resolves.toBe(0)
+      expect(await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8')).toBe(canonicalManifest)
+    } finally {
+      process.chdir(previousCwd)
+    }
+  })
+
+  it('fails closed when a bootstrap source appears after init review', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'agent-policy-bootstrap-drift-'))
+    const root = join(parent, 'consumer')
+    const planPath = join(parent, 'init-plan.json')
+    const manualManifest = 'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.1\nbundles: []\ntargets: [codex]\n# manually created after review\n'
+    await mkdir(root, { recursive: true })
+
+    const previousCwd = process.cwd()
+    process.chdir(root)
+    try {
+      const repositoryRoot = process.cwd()
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core,react',
+        '--plan', planPath,
+      ], realIo(root))).resolves.toBe(0)
+      await mkdir(join(root, '.agent-policy'), { recursive: true })
+      await writeFile(join(root, '.agent-policy/policy.yaml'), manualManifest)
+      const beforeStalePlanReview = await snapshotConsumer(root)
+
+      const diff = realIo(root)
+      await expect(runCli(['diff', planPath], diff)).resolves.toBe(1)
+      expect(diff.stdout).toContain(`! ${join(repositoryRoot, '.agent-policy/policy.yaml')}`)
+      expect(await snapshotConsumer(root)).toEqual(beforeStalePlanReview)
+      const apply = realIo(root)
+      await expect(runCli(['apply', planPath, '--yes'], apply)).resolves.toBe(1)
+      expect(apply.stderr).toContain('Drift remains unresolved')
+      expect(await snapshotConsumer(root)).toEqual(beforeStalePlanReview)
+    } finally {
+      process.chdir(previousCwd)
+    }
+  })
+
+  it.each([
+    {
+      name: 'target',
+      install: async (root: string): Promise<void> => {
+        await mkdir(join(root, '.agent-policy'), { recursive: true })
+        await symlink('missing-policy.yaml', join(root, '.agent-policy/policy.yaml'))
+      },
+    },
+    {
+      name: 'ancestor',
+      install: async (root: string): Promise<void> => {
+        await symlink('missing-policy-directory', join(root, '.agent-policy'))
+      },
+    },
+  ])('fails closed without mutation when a planned-absent bootstrap source gains a dangling $name symlink', async ({ install }) => {
+    const parent = await mkdtemp(join(tmpdir(), 'agent-policy-bootstrap-dangling-symlink-'))
+    const root = join(parent, 'consumer')
+    const planPath = join(parent, 'init-plan.json')
+    await mkdir(root, { recursive: true })
+
+    const previousCwd = process.cwd()
+    process.chdir(root)
+    try {
+      await expect(runCli([
+        'init',
+        '--target', 'codex',
+        '--bundles', 'core,react',
+        '--plan', planPath,
+      ], realIo(root))).resolves.toBe(0)
+      await install(root)
+      const beforeFailure = await snapshotConsumer(root)
+
+      await expect(runCli(['diff', planPath], realIo(root))).resolves.toBe(1)
+      expect(await snapshotConsumer(root)).toEqual(beforeFailure)
+      await expect(runCli(['apply', planPath, '--yes'], realIo(root))).resolves.toBe(1)
+      expect(await snapshotConsumer(root)).toEqual(beforeFailure)
+    } finally {
+      process.chdir(previousCwd)
+    }
+  })
+
   it('projects selected Repository Invariants in order and supports an empty selection', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'agent-policy-invariants-'))
     const root = join(parent, 'consumer')

@@ -48,8 +48,12 @@ export async function applyPlan(
         const immediatelyCurrent = await revalidatePreconditions(plan, options)
         if ('ok' in immediatelyCurrent) throw new Error(immediatelyCurrent.message)
       },
-      async () => {
-        const immutableFailure = await revalidateImmutablePreconditions(plan, options)
+      async (installedCreatePaths) => {
+        const immutableFailure = await revalidateImmutablePreconditions(
+          plan,
+          options,
+          installedCreatePaths,
+        )
         if (immutableFailure !== undefined) throw new Error(immutableFailure.message)
       },
     )

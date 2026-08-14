@@ -8,7 +8,7 @@ Agent Policy Toolkit is a portable, layered policy compiler for AI coding-agent 
 
 - Node.js `>=22.20.0` (the CI matrix also exercises Node 24)
 - pnpm `11.3.0` through Corepack
-- a consumer repository with human-owned `.agent-policy/` sources
+- a consumer repository; the consumer owns `.agent-policy/` after reviewed initialization, and `init` can bootstrap the missing manifest
 
 The toolkit owns shared catalog sources under `catalog/`. A consumer owns its project policy under `.agent-policy/`. Harness files are projections, not canonical policy.
 
@@ -34,8 +34,8 @@ Do not use a workspace, link, branch, or version range for a dogfood installatio
 
 ## Lifecycle at a glance
 
-1. Create or review the consumer-owned `.agent-policy/policy.yaml`.
-2. Run `agent-policy init --target codex --bundles ... --plan /absolute/path/plan.json`. Initialization is read-only, adds `codex` to `policy.yaml.targets` through the reviewed plan when needed, and saves the plan outside the consumer worktree.
+1. Create or review the consumer-owned `.agent-policy/policy.yaml`, or let reviewed initialization bootstrap the missing manifest.
+2. Run `agent-policy init --target codex --bundles ... --plan /absolute/path/plan.json`. Initialization is read-only, stages a minimal consumer-owned manifest when it is missing, adds `codex` to `policy.yaml.targets` through the reviewed plan when needed, and saves the plan outside the consumer worktree.
 3. Review `agent-policy diff /absolute/path/plan.json`. The diff includes resolved paths, canonical source changes, generated content, drift, and deletions.
 4. Apply only that reviewed plan with `agent-policy apply /absolute/path/plan.json --yes`.
 5. Run `agent-policy check` to compile into temporary staging and verify committed projections without writing to the consumer.

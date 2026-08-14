@@ -7,6 +7,7 @@ import {
   open,
   readFile,
   readdir,
+  rm,
   symlink,
   writeFile,
 } from 'node:fs/promises'
@@ -27,6 +28,13 @@ const owner = '@agent-policy/agent-policy-toolkit'
 const toolkitVersion = '0.1.0-alpha.1'
 const start = `<!-- agent-policy:start owner=${owner} -->`
 const end = '<!-- agent-policy:end -->'
+const bootstrapPolicy = [
+  'schemaVersion: v1',
+  'toolkitVersion: 0.1.0-alpha.1',
+  'bundles: []',
+  'targets: [codex]',
+  '',
+].join('\n')
 
 function hash(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex')
@@ -70,6 +78,30 @@ async function plan(
   })
 }
 
+async function planSourceCreation(
+  parent: string,
+  root: string,
+  desiredArtifacts: readonly VirtualArtifact[],
+  sourceChanges = [{
+    path: '.agent-policy/policy.yaml',
+    content: bootstrapPolicy,
+    sha256: hash(bootstrapPolicy),
+    operation: 'create' as const,
+  }],
+): Promise<ChangePlan> {
+  await rm(join(root, '.agent-policy'), { recursive: true, force: true })
+  return createChangePlan({
+    command: 'init',
+    toolkitVersion,
+    repositoryRoot: root,
+    planPath: join(parent, 'reviewed-plan.json'),
+    sourcePaths: sourceChanges.map(({ path }) => path),
+    sourceChanges,
+    desiredArtifacts,
+    createdAt: '2026-08-14T00:00:00.000Z',
+  })
+}
+
 async function expectMissing(path: string): Promise<void> {
   await expect(lstat(path)).rejects.toMatchObject({ code: 'ENOENT' })
 }
@@ -85,6 +117,94 @@ function rehashPlan(planToChange: ChangePlan, changes: Partial<ChangePlan>): Cha
 }
 
 describe('transactional plan application', () => {
+  it('applies a reviewed canonical source creation with generated artifacts', async () => {
+    const { parent, root } = await sandbox()
+    const reviewed = await planSourceCreation(parent, root, [
+      artifact('AGENTS.md', generated('bootstrap\n')),
+    ])
+
+    const result = await applyPlan(reviewed, { repositoryRoot: root, toolkitVersion })
+
+    expect(result).toMatchObject({ ok: true })
+    expect(await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8')).toBe(bootstrapPolicy)
+    expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toBe(generated('bootstrap\n'))
+  })
+
+  it('applies multiple reviewed canonical source creations in one transaction', async () => {
+    const { parent, root } = await sandbox()
+    const overlay = 'overrides: []\n'
+    const reviewed = await planSourceCreation(parent, root, [], [
+      {
+        path: '.agent-policy/policy.yaml',
+        content: bootstrapPolicy,
+        sha256: hash(bootstrapPolicy),
+        operation: 'create',
+      },
+      {
+        path: '.agent-policy/overlays/local.yaml',
+        content: overlay,
+        sha256: hash(overlay),
+        operation: 'create',
+      },
+    ])
+
+    const result = await applyPlan(reviewed, { repositoryRoot: root, toolkitVersion })
+
+    expect(result).toMatchObject({ ok: true })
+    expect(await readFile(join(root, '.agent-policy/policy.yaml'), 'utf8')).toBe(bootstrapPolicy)
+    expect(await readFile(join(root, '.agent-policy/overlays/local.yaml'), 'utf8')).toBe(overlay)
+  })
+
+  it('rejects a canonical source that appears after creation planning before writing targets', async () => {
+    const { parent, root } = await sandbox()
+    const reviewed = await planSourceCreation(parent, root, [
+      artifact('AGENTS.md', generated('bootstrap\n')),
+    ])
+    await mkdir(join(root, '.agent-policy'), { recursive: true })
+    await writeFile(join(root, '.agent-policy/policy.yaml'), 'concurrent source\n')
+
+    const result = await applyPlan(reviewed, { repositoryRoot: root, toolkitVersion })
+
+    expect(result).toMatchObject({ ok: false, code: 'source-drift' })
+    await expectMissing(join(root, 'AGENTS.md'))
+  })
+
+  it('rolls back created canonical sources and generated artifacts after a later failure', async () => {
+    const { parent, root } = await sandbox()
+    const overlay = 'overrides: []\n'
+    const reviewed = await planSourceCreation(parent, root, [
+      artifact('AGENTS.md', generated('bootstrap\n')),
+    ], [
+      {
+        path: '.agent-policy/policy.yaml',
+        content: bootstrapPolicy,
+        sha256: hash(bootstrapPolicy),
+        operation: 'create',
+      },
+      {
+        path: '.agent-policy/overlays/local.yaml',
+        content: overlay,
+        sha256: hash(overlay),
+        operation: 'create',
+      },
+    ])
+    const hooks: TransactionHooks = {
+      beforeRename: ({ phase, operationIndex }) => {
+        if (phase === 'install' && operationIndex === 2) throw new Error('stop after source creation')
+      },
+    }
+
+    const result = await applyPlan(reviewed, {
+      repositoryRoot: root,
+      toolkitVersion,
+      transactionHooks: hooks,
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'transaction-failed', rollbackFailures: [] })
+    await expectMissing(join(root, '.agent-policy'))
+    await expectMissing(join(root, 'AGENTS.md'))
+  })
+
   it('applies create, replace, Managed Region, and removal work as one transaction', async () => {
     const { parent, root } = await sandbox()
     const previousGenerated = generated('old\n')

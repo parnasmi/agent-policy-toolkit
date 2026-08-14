@@ -1,11 +1,13 @@
-import { access, mkdtemp } from 'node:fs/promises'
+import { access, mkdtemp, mkdir, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
 import { compileCodex, prepareBundleSelection } from '../../src/cli/commands/common.js'
+import { PolicyError } from '../../src/domain/diagnostics.js'
 import { parseYamlDocument } from '../../src/schema/frontmatter.js'
+import { loadProjectPolicy } from '../../src/schema/load-project.js'
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -55,5 +57,54 @@ describe('bootstrap source preparation', () => {
       project: { bundles: ['react'], targets: ['codex'] },
     })
     expect(await exists(join(root, '.agent-policy', 'policy.yaml'))).toBe(false)
+  })
+
+  it('rejects bootstrap when the policy directory symlink escapes the repository', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-policy-bootstrap-'))
+    const outside = await mkdtemp(join(tmpdir(), 'agent-policy-outside-'))
+    await mkdir(outside, { recursive: true })
+    await symlink(outside, join(root, '.agent-policy'))
+    const manifest = [
+      'schemaVersion: v1',
+      'toolkitVersion: 0.1.0-alpha.1',
+      'bundles: [react]',
+      'targets: [codex]',
+      '',
+    ].join('\n')
+
+    await expect(loadProjectPolicy(root, { manifestOverride: manifest })).rejects.toMatchObject({
+      diagnostics: [expect.objectContaining({ code: 'PATH_ESCAPES_PROJECT' })],
+    } satisfies Partial<PolicyError>)
+    await expect(prepareBundleSelection(
+      { repositoryRoot: root, toolkitRoot: root, toolkitVersion: '0.1.0-alpha.1' },
+      ['core', 'react'],
+      'codex',
+    )).rejects.toMatchObject({
+      diagnostics: [expect.objectContaining({ code: 'PATH_ESCAPES_PROJECT' })],
+    } satisfies Partial<PolicyError>)
+    expect(await exists(join(outside, 'policy.yaml'))).toBe(false)
+  })
+
+  it('rejects a dangling policy directory symlink before accepting an override or staging bootstrap', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-policy-bootstrap-'))
+    await symlink(join(root, 'missing-policy-directory'), join(root, '.agent-policy'))
+    const manifest = [
+      'schemaVersion: v1',
+      'toolkitVersion: 0.1.0-alpha.1',
+      'bundles: [react]',
+      'targets: [codex]',
+      '',
+    ].join('\n')
+
+    await expect(loadProjectPolicy(root, { manifestOverride: manifest })).rejects.toMatchObject({
+      diagnostics: [expect.objectContaining({ code: 'PATH_ESCAPES_PROJECT' })],
+    } satisfies Partial<PolicyError>)
+    await expect(prepareBundleSelection(
+      { repositoryRoot: root, toolkitRoot: root, toolkitVersion: '0.1.0-alpha.1' },
+      ['core', 'react'],
+      'codex',
+    )).rejects.toMatchObject({
+      diagnostics: [expect.objectContaining({ code: 'PATH_ESCAPES_PROJECT' })],
+    } satisfies Partial<PolicyError>)
   })
 })

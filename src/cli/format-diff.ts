@@ -47,9 +47,20 @@ export function detectChangePlanDrift(
   contents: ReadonlyMap<string, string | undefined>,
 ): readonly string[] {
   const drift: string[] = []
-  for (const path of Object.keys(plan.sourceHashes)) {
+  const sourceChangesByPath = new Map(
+    (plan.sourceChanges ?? []).map((source) => [source.path, source]),
+  )
+  const sourcePaths = new Set([
+    ...Object.keys(plan.sourceHashes),
+    ...sourceChangesByPath.keys(),
+  ])
+  for (const path of sourcePaths) {
     const content = contents.get(path)
-    if (content === undefined || sha256Utf8(content) !== plan.sourceHashes[path]) drift.push(path)
+    if (sourceChangesByPath.get(path)?.operation === 'create') {
+      if (content !== undefined) drift.push(path)
+    } else if (content === undefined || sha256Utf8(content) !== plan.sourceHashes[path]) {
+      drift.push(path)
+    }
   }
   for (const artifact of plan.desiredArtifacts) {
     const current = contents.get(artifact.path)
@@ -66,8 +77,12 @@ export function detectChangePlanDrift(
 
 /** Render a review-oriented, deterministic diff with complete policy and generated contents. */
 export function formatChangePlanDiff(plan: ChangePlan, options: DiffFormatOptions): string {
-  const paths = new Set<string>([
+  const sourcePaths = [...new Set([
     ...Object.keys(plan.sourceHashes),
+    ...(plan.sourceChanges ?? []).map(({ path }) => path),
+  ])].sort(compareStrings)
+  const paths = new Set<string>([
+    ...sourcePaths,
     ...plan.desiredArtifacts.map(({ path }) => path),
     ...plan.removals,
   ])
@@ -83,15 +98,20 @@ export function formatChangePlanDiff(plan: ChangePlan, options: DiffFormatOption
     'Source changes:',
   ]
 
-  const sourcePaths = Object.keys(plan.sourceHashes).sort(compareStrings)
   if (sourcePaths.length === 0) linesOut.push('(none)')
   for (const path of sourcePaths) {
     const content = options.contents.get(path)
+    const change = plan.sourceChanges?.find((candidate) => candidate.path === path)
     linesOut.push(`### ${absolute(options.repositoryRoot, path)}`)
+    if (change?.operation === 'create') {
+      linesOut.push('expected: absent')
+      linesOut.push(`+++ ${absolute(options.repositoryRoot, path)} (new)`)
+      linesOut.push(...lines(change.content).map((line) => `+${line}`))
+      continue
+    }
     linesOut.push(`expected sha256: ${plan.sourceHashes[path]}`)
     if (content === undefined) linesOut.push('! missing source')
     else {
-      const change = plan.sourceChanges?.find((candidate) => candidate.path === path)
       if (change === undefined) linesOut.push(...lines(content).map((line) => ` ${line}`))
       else {
         linesOut.push(`--- ${absolute(options.repositoryRoot, path)}`)

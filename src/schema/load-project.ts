@@ -91,6 +91,39 @@ function isWithin(parent: string, child: string): boolean {
   return childPath !== '' && childPath !== '..' && !childPath.startsWith(`..${sep}`) && !isAbsolute(childPath)
 }
 
+/** Reject an existing policy directory that resolves outside the repository before using an in-memory manifest. */
+export async function validateProjectPolicyDirectory(root: string): Promise<void> {
+  const repositoryRoot = resolve(root)
+  const policyDirectory = resolve(repositoryRoot, '.agent-policy')
+  try {
+    await lstat(policyDirectory)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  let canonicalPolicyDirectory: string
+  try {
+    canonicalPolicyDirectory = await realpath(policyDirectory)
+  } catch (error) {
+    throw policyError(
+      'PATH_ESCAPES_PROJECT',
+      error instanceof Error ? error.message : 'Policy directory cannot be resolved',
+      '.agent-policy/policy.yaml',
+    )
+  }
+  const [canonicalRoot, metadata] = await Promise.all([
+    realpath(repositoryRoot),
+    lstat(canonicalPolicyDirectory),
+  ])
+  if (!metadata.isDirectory() || !isWithin(canonicalRoot, canonicalPolicyDirectory)) {
+    throw policyError(
+      'PATH_ESCAPES_PROJECT',
+      'Policy directory resolves outside the repository',
+      '.agent-policy/policy.yaml',
+    )
+  }
+}
+
 async function readDeclaredFile(root: string, policyDirectory: string, file: string): Promise<string> {
   const sourcePath = sourcePathFor(root, file)
   try {
@@ -213,6 +246,7 @@ export async function loadProjectPolicy(
   const policyDirectory = resolve(repositoryRoot, '.agent-policy')
   const manifestFile = resolveDeclaredFile(repositoryRoot, policyDirectory, 'policy.yaml')
   const manifestPath = sourcePathFor(repositoryRoot, manifestFile)
+  if (options.manifestOverride !== undefined) await validateProjectPolicyDirectory(repositoryRoot)
   const manifest = validateDocument<ProjectPolicyManifest>(
     'project-policy-v1',
     parseYamlDocument(

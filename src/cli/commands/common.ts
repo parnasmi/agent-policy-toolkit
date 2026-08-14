@@ -25,7 +25,11 @@ import type { ArtifactDrift } from '../../applier/reconcile.js'
 import { createChangePlan } from '../../planner/create-plan.js'
 import { normalizeGeneratedLineEndings, sha256Utf8 } from '../../planner/hash.js'
 import { computePlanHash } from '../../planner/serialize-plan.js'
-import { loadProjectPolicy, type ProjectPolicySource } from '../../schema/load-project.js'
+import {
+  loadProjectPolicy,
+  validateProjectPolicyDirectory,
+  type ProjectPolicySource,
+} from '../../schema/load-project.js'
 import { parseYamlDocument } from '../../schema/frontmatter.js'
 import { validateDocument } from '../../schema/validator.js'
 import { policyLockArtifact, POLICY_LOCK_PATH } from '../../planner/policy-lock.js'
@@ -282,6 +286,7 @@ export async function prepareBundleSelection(
     await lstat(manifestFile)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    await validateProjectPolicyDirectory(context.repositoryRoot)
     const content = stringify({
       schemaVersion: 'v1',
       toolkitVersion: context.toolkitVersion,

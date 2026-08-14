@@ -23,6 +23,7 @@ import {
   computePlanHash,
   serializeChangePlan,
 } from '../../src/planner/serialize-plan.js'
+import { detectChangePlanDrift, formatChangePlanDiff } from '../../src/cli/format-diff.js'
 import type { VirtualArtifact } from '../../src/domain/artifacts.js'
 import type { ChangePlan } from '../../src/domain/change-plan.js'
 
@@ -203,6 +204,106 @@ Do not edit; change \`.agent-policy/\` and regenerate.
 })
 
 describe('Change Plan creation', () => {
+  it('shows an absent canonical source creation as reviewed new content', () => {
+    const sourcePath = '.agent-policy/policy.yaml'
+    const sourceContent = 'schemaVersion: v1\n'
+    const changePlan = {
+      schemaVersion: '1',
+      command: 'init',
+      toolkitVersion: '0.1.0-alpha.1',
+      repositoryRootFingerprint: 'root',
+      sourceHashes: {},
+      sourceChanges: [{
+        path: sourcePath,
+        content: sourceContent,
+        sha256: hash(sourceContent),
+        operation: 'create',
+      }],
+      currentArtifactHashes: {},
+      currentManagedRegionHashes: {},
+      desiredArtifacts: [],
+      removals: [],
+      diagnostics: [],
+      createdAt: '2026-08-14T00:00:00.000Z',
+      planHash: '',
+    } satisfies ChangePlan
+    const absent = new Map<string, string | undefined>([[sourcePath, undefined]])
+
+    const diff = formatChangePlanDiff(changePlan, { repositoryRoot: '/consumer', contents: absent })
+
+    expect(diff).toContain('expected: absent')
+    expect(diff).toContain('+++ /consumer/.agent-policy/policy.yaml (new)')
+    expect(diff).toContain('+schemaVersion: v1')
+    expect(detectChangePlanDrift(changePlan, absent)).toEqual([])
+    expect(detectChangePlanDrift(
+      changePlan,
+      new Map([[sourcePath, 'concurrent source\n']]),
+    )).toEqual([sourcePath])
+  })
+
+  it('plans a missing canonical source creation without writing the source', async () => {
+    const parent = await sandbox()
+    const root = join(parent, 'consumer')
+    const planPath = join(parent, 'plan.json')
+    const content = [
+      'schemaVersion: v1',
+      'toolkitVersion: 0.1.0-alpha.1',
+      'bundles: []',
+      'targets: [codex]',
+      '',
+    ].join('\n')
+    await mkdir(root)
+
+    const planRequest: PlanRequest = {
+      command: 'init',
+      toolkitVersion: '0.1.0-alpha.1',
+      repositoryRoot: root,
+      planPath,
+      sourcePaths: ['.agent-policy/policy.yaml'],
+      sourceChanges: [{
+        path: '.agent-policy/policy.yaml',
+        content,
+        sha256: hash(content),
+        operation: 'create',
+      }],
+      desiredArtifacts: [],
+      createdAt: '2026-08-14T00:00:00.000Z',
+    }
+
+    const plan = await createChangePlan(planRequest)
+
+    expect(plan.sourceChanges).toEqual(planRequest.sourceChanges)
+    expect(plan.sourceHashes).toEqual({})
+    await expect(lstat(join(root, '.agent-policy'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('refuses canonical source creation when the source already exists without writing a plan', async () => {
+    const parent = await sandbox()
+    const root = join(parent, 'consumer')
+    const planPath = join(parent, 'plan.json')
+    const content = 'schemaVersion: v1\n'
+    await mkdir(join(root, '.agent-policy'), { recursive: true })
+    await writeFile(join(root, '.agent-policy/policy.yaml'), content)
+
+    await expect(createChangePlan({
+      command: 'init',
+      toolkitVersion: '0.1.0-alpha.1',
+      repositoryRoot: root,
+      planPath,
+      sourcePaths: ['.agent-policy/policy.yaml'],
+      sourceChanges: [{
+        path: '.agent-policy/policy.yaml',
+        content,
+        sha256: hash(content),
+        operation: 'create',
+      }],
+      desiredArtifacts: [],
+      createdAt: '2026-08-14T00:00:00.000Z',
+    })).rejects.toThrow(/Canonical source already exists for create/)
+
+    await expect(lstat(planPath)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('plans sorted create, replace, delete, and Managed Region operations without changing the repository', async () => {
     const parent = await sandbox()
     const root = join(parent, 'consumer')
