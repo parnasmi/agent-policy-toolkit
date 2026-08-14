@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript 5.9 ESM, Node.js 22.20+ and 24, pnpm 11, YAML 2.8.1, Vitest 4.1.6, existing Change Plan hashing and transactional filesystem ports.
 
-**Spec:** `../tms-frontend/docs/superpowers/specs/2026-08-12-agent-policy-toolkit-design.md`; defect: `.superpowers/defects/2026-08-13-init-requires-pre-existing-manifest.md`
+**Spec:** [approved design](../specs/2026-08-12-agent-policy-toolkit-design.md); defect: `.superpowers/defects/2026-08-13-init-requires-pre-existing-manifest.md`
 
 ## Global Constraints
 
