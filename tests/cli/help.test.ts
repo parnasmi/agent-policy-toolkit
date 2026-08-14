@@ -11,6 +11,7 @@ describe('agent-policy --help', () => {
 
     expect(io.stdout).toContain('Agent Policy Toolkit')
     expect(io.stdout).toContain('agent-policy <command>')
+    expect(io.stdout).toContain('When .agent-policy/policy.yaml is absent, init stages a minimal consumer-owned manifest; only applying its reviewed plan creates it.')
     expect(io.writes).toEqual([])
   })
 })

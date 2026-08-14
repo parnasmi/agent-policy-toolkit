@@ -36,6 +36,7 @@ Usage:
 Drift reconciliation: add --reconcile adopt|regenerate|abort, or choose interactively when supported.
 
 Commands create read-only reviewed plans until apply crosses the mutation boundary.
+When .agent-policy/policy.yaml is absent, init stages a minimal consumer-owned manifest; only applying its reviewed plan creates it.
 --yes confirms reviewed application; it never confirms advisory Bundle Selection.
 `
 

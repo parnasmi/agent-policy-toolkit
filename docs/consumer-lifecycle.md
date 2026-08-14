@@ -1,6 +1,6 @@
 # Consumer Lifecycle
 
-The consumer repository owns `.agent-policy/`; the toolkit owns shared catalog sources and deterministic projection code. Treat the source tree and projections as one reviewed change, but never treat a harness-native file as the canonical policy source.
+A fresh consumer repository may begin without `.agent-policy/`. After reviewed initialization, the consumer owns `.agent-policy/`; the toolkit owns shared catalog sources and deterministic projection code. Treat the source tree and projections as one reviewed change, but never treat a harness-native file as the canonical policy source.
 
 ## Consumer source layout
 
@@ -47,9 +47,9 @@ agent-policy init \
 
 `--plan` must be an explicit absolute path outside the consumer worktree. Planning compiles sources and virtual artifacts but does not write the consumer. The plan itself is saved atomically at the external path.
 
-If `--bundles` is omitted, package, lockfile, source-extension, and test-configuration inspection proposes a Bundle Selection with evidence. Detection is advisory: it requires interactive confirmation. `--yes` does not confirm this proposal. Use an explicit `--bundles` list for a non-interactive plan. If the explicit list or required `codex` target differs from the source manifest, the plan contains a reviewed source change; the existing source remains unchanged until apply.
+If `.agent-policy/policy.yaml` is absent, an explicit Bundle Selection—or a confirmed advisory selection—is rendered into an in-memory minimal manifest. The external, read-only plan shows that canonical manifest as a `create` source change. Only `apply` creates `.agent-policy/policy.yaml` transactionally. If `--bundles` is omitted, package, lockfile, source-extension, and test-configuration inspection proposes a Bundle Selection with evidence. Detection is advisory: it requires interactive confirmation. `--yes` does not confirm this proposal. Use an explicit `--bundles` list for a non-interactive plan. If the explicit list or required `codex` target differs from an existing source manifest, the plan contains a reviewed source change; the existing source remains unchanged until apply.
 
-Initialization preserves all existing `AGENTS.md` prose outside the exact bounded Managed Region and does not overwrite existing hand-authored skills. A foreign or malformed managed marker is drift and fails closed.
+Existing `.agent-policy` content, unmanaged harness prose, and invalid or unsafe paths are not classified or silently overwritten. Initialization preserves all existing `AGENTS.md` prose outside the exact bounded Managed Region and does not overwrite existing hand-authored skills. A foreign or malformed managed marker is drift and fails closed. After bootstrap, use the ordinary source → plan → diff → apply → check lifecycle.
 
 ### Review the plan
 

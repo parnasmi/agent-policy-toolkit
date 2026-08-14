@@ -52,6 +52,7 @@ export interface PreconditionsOptions {
 export async function revalidateImmutablePreconditions(
   plan: ChangePlan,
   options: PreconditionsOptions,
+  installedCreatePaths: readonly string[] = [],
 ): Promise<ApplyFailure | undefined> {
   try {
     const shapeFailure = validatePlanShape(plan)
@@ -67,10 +68,21 @@ export async function revalidateImmutablePreconditions(
       )
     }
     const sourceDrift: string[] = []
+    const installedCreates = new Set(installedCreatePaths)
     for (const [path, expectedHash] of Object.entries(plan.sourceHashes)) {
       const target = await resolveConfinedPath(repositoryRoot, path)
       const current = await readCurrent(target.path)
       if (current === undefined || sha256Utf8(current) !== expectedHash) sourceDrift.push(path)
+    }
+    for (const source of plan.sourceChanges ?? []) {
+      if (source.operation !== 'create') continue
+      const target = await resolveConfinedPath(repositoryRoot, source.path)
+      const current = await readCurrent(target.path)
+      if (
+        installedCreates.has(source.path)
+          ? current === undefined || sha256Utf8(current) !== source.sha256
+          : current !== undefined
+      ) sourceDrift.push(source.path)
     }
     return sourceDrift.length === 0
       ? undefined
@@ -162,11 +174,14 @@ function validatePlanShape(plan: ChangePlan): ApplyFailure | undefined {
     return failure('invalid-plan', 'Change Plan contains duplicate canonical source changes', sourceChangePaths)
   }
   for (const source of sourceChanges) {
-    if (plan.sourceHashes[source.path] === undefined) {
-      return failure('invalid-plan', `Source change is not bound to a canonical source: ${source.path}`, [source.path])
-    }
     if (source.operation !== 'create' && source.operation !== 'replace') {
       return failure('invalid-plan', `Unsupported canonical source operation: ${source.path}`, [source.path])
+    }
+    if (source.operation === 'replace' && plan.sourceHashes[source.path] === undefined) {
+      return failure('invalid-plan', `Source replacement is not bound to a canonical source: ${source.path}`, [source.path])
+    }
+    if (source.operation === 'create' && plan.sourceHashes[source.path] !== undefined) {
+      return failure('invalid-plan', `Source creation must be bound to canonical source absence: ${source.path}`, [source.path])
     }
     if (source.sha256 !== sha256Utf8(source.content)) {
       return failure('invalid-plan', `Canonical source hash mismatch for ${source.path}`, [source.path])
@@ -298,6 +313,10 @@ export async function revalidatePreconditions(
     const current = await readCurrent(resolved.get(path) ?? '')
     if (current === undefined || sha256Utf8(current) !== expectedHash) sourceDrift.push(path)
   }
+  for (const source of plan.sourceChanges ?? []) {
+    if (source.operation !== 'create') continue
+    if (await readCurrent(resolved.get(source.path) ?? '') !== undefined) sourceDrift.push(source.path)
+  }
   if (sourceDrift.length > 0) {
     return failure('source-drift', 'Canonical policy sources changed after plan review', sourceDrift)
   }
@@ -379,13 +398,25 @@ export async function revalidatePreconditions(
     })
   }
 
-  // Install canonical source replacements last. The transaction rechecks the
+  // Install canonical source writes last. The transaction rechecks the
   // reviewed preconditions between each operation; keeping source mutation at
   // the end means those checks never observe our own in-flight source write.
   for (const source of [...(plan.sourceChanges ?? [])].sort((left, right) =>
     compareStrings(left.path, right.path))) {
     const targetPath = resolved.get(source.path) ?? ''
     const current = await readCurrent(targetPath)
+    if (source.operation === 'create') {
+      if (current !== undefined) {
+        return failure('source-drift', `Canonical policy source changed after review: ${source.path}`, [source.path])
+      }
+      operations.push({
+        relativePath: source.path,
+        targetPath,
+        content: source.content,
+        existed: false,
+      })
+      continue
+    }
     const expectedHash = plan.sourceHashes[source.path]
     if (expectedHash === undefined || current === undefined || sha256Utf8(current) !== expectedHash) {
       return failure('source-drift', `Canonical policy source changed after review: ${source.path}`, [source.path])

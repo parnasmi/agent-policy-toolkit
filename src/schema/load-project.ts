@@ -23,6 +23,10 @@ export interface ProjectPolicySource extends ProjectPolicy {
   readonly invariantsPath?: string
 }
 
+export interface LoadProjectPolicyOptions {
+  readonly manifestOverride?: string
+}
+
 /** Load the generated lock when present; lock bytes are never treated as canonical policy. */
 export async function loadPolicyLock(root: string): Promise<ProjectPolicyLock | undefined> {
   const repositoryRoot = resolve(root)
@@ -85,6 +89,39 @@ function resolveDeclaredFile(root: string, policyDirectory: string, declaredPath
 function isWithin(parent: string, child: string): boolean {
   const childPath = relative(parent, child)
   return childPath !== '' && childPath !== '..' && !childPath.startsWith(`..${sep}`) && !isAbsolute(childPath)
+}
+
+/** Reject an existing policy directory that resolves outside the repository before using an in-memory manifest. */
+export async function validateProjectPolicyDirectory(root: string): Promise<void> {
+  const repositoryRoot = resolve(root)
+  const policyDirectory = resolve(repositoryRoot, '.agent-policy')
+  try {
+    await lstat(policyDirectory)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  let canonicalPolicyDirectory: string
+  try {
+    canonicalPolicyDirectory = await realpath(policyDirectory)
+  } catch (error) {
+    throw policyError(
+      'PATH_ESCAPES_PROJECT',
+      error instanceof Error ? error.message : 'Policy directory cannot be resolved',
+      '.agent-policy/policy.yaml',
+    )
+  }
+  const [canonicalRoot, metadata] = await Promise.all([
+    realpath(repositoryRoot),
+    lstat(canonicalPolicyDirectory),
+  ])
+  if (!metadata.isDirectory() || !isWithin(canonicalRoot, canonicalPolicyDirectory)) {
+    throw policyError(
+      'PATH_ESCAPES_PROJECT',
+      'Policy directory resolves outside the repository',
+      '.agent-policy/policy.yaml',
+    )
+  }
 }
 
 async function readDeclaredFile(root: string, policyDirectory: string, file: string): Promise<string> {
@@ -201,14 +238,21 @@ async function readOptionalInvariants(
 }
 
 /** Load the declared project policy sources without creating or modifying any consumer files. */
-export async function loadProjectPolicy(root: string): Promise<ProjectPolicySource> {
+export async function loadProjectPolicy(
+  root: string,
+  options: LoadProjectPolicyOptions = {},
+): Promise<ProjectPolicySource> {
   const repositoryRoot = resolve(root)
   const policyDirectory = resolve(repositoryRoot, '.agent-policy')
   const manifestFile = resolveDeclaredFile(repositoryRoot, policyDirectory, 'policy.yaml')
   const manifestPath = sourcePathFor(repositoryRoot, manifestFile)
+  if (options.manifestOverride !== undefined) await validateProjectPolicyDirectory(repositoryRoot)
   const manifest = validateDocument<ProjectPolicyManifest>(
     'project-policy-v1',
-    parseYamlDocument(await readDeclaredFile(repositoryRoot, policyDirectory, manifestFile), manifestPath),
+    parseYamlDocument(
+      options.manifestOverride ?? await readDeclaredFile(repositoryRoot, policyDirectory, manifestFile),
+      manifestPath,
+    ),
     manifestPath,
   )
   const invariants = await readOptionalInvariants(repositoryRoot, policyDirectory)

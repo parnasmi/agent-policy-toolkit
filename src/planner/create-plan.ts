@@ -130,6 +130,15 @@ async function stageAndValidateArtifact(
   }
 }
 
+async function readCurrent(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw error
+  }
+}
+
 /** Inspect sources and virtual artifacts, then save a hash-bound plan without mutating the repository. */
 export async function createChangePlan(request: PlanRequest): Promise<ChangePlan> {
   const repositoryRoot = await realpath(request.repositoryRoot)
@@ -146,6 +155,7 @@ export async function createChangePlan(request: PlanRequest): Promise<ChangePlan
       path: normalizeArtifactPath(source.path),
     }))
     assertUnique(sourceChanges.map(({ path }) => path), 'canonical source changes')
+    const sourceChangesByPath = new Map(sourceChanges.map((source) => [source.path, source]))
     for (const source of sourceChanges) {
       if (!sourcePaths.includes(source.path)) {
         throw new Error(`Source change is not a declared canonical source: ${source.path}`)
@@ -183,7 +193,16 @@ export async function createChangePlan(request: PlanRequest): Promise<ChangePlan
     const sourceHashes: Record<string, string> = {}
     for (const sourcePath of [...sourcePaths].sort(compareStrings)) {
       const target = await resolveConfinedPath(repositoryRoot, sourcePath)
-      sourceHashes[sourcePath] = sha256Utf8(await readFile(target.path, 'utf8'))
+      const current = await readCurrent(target.path)
+      const change = sourceChangesByPath.get(sourcePath)
+      if (current === undefined) {
+        if (change?.operation !== 'create') throw new Error(`Missing canonical source: ${sourcePath}`)
+        continue
+      }
+      if (change?.operation === 'create') {
+        throw new Error(`Canonical source already exists for create: ${sourcePath}`)
+      }
+      sourceHashes[sourcePath] = sha256Utf8(current)
     }
 
     const currentArtifactHashes: Record<string, string> = {}

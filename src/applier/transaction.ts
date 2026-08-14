@@ -598,7 +598,7 @@ export async function applyTransaction(
   operations: readonly PreparedOperation[],
   hooks?: TransactionHooks,
   beforeCommit?: () => void | Promise<void>,
-  beforeMutation?: () => void | Promise<void>,
+  beforeMutation?: (installedCreatePaths: readonly string[]) => void | Promise<void>,
 ): Promise<readonly string[]> {
   const transactionId = randomUUID()
   const entries: TransactionEntry[] = []
@@ -608,10 +608,15 @@ export async function applyTransaction(
     const previous = recoveryCleanupFailures.get(path)
     recoveryCleanupFailures.set(path, previous === undefined ? error : `${previous}; ${error}`)
   }
+  const revalidateBeforeMutation = async (): Promise<void> => {
+    await beforeMutation?.(entries
+      .filter(({ installed, operation }) => installed && !operation.existed)
+      .map(({ operation }) => operation.relativePath))
+  }
   try {
     for (const operation of operations) {
       await hooks?.beforePrepare?.(operation.relativePath)
-      await beforeMutation?.()
+      await revalidateBeforeMutation()
       await resolveConfinedPath(repositoryRoot, operation.relativePath)
       const entry = await initializeEntry(operation, transactionId, createdDirectories)
       entries.push(entry)
@@ -620,7 +625,7 @@ export async function applyTransaction(
         phase: 'prepare',
         path: entry.operation.relativePath,
       })
-      await beforeMutation?.()
+      await revalidateBeforeMutation()
       await prepareTemporary(entry)
     }
     await beforeCommit?.()
@@ -640,7 +645,7 @@ export async function applyTransaction(
           phase: 'backup',
           path: entry.operation.relativePath,
         })
-        await beforeMutation?.()
+        await revalidateBeforeMutation()
         await runStableOperation(entryParent(entry), {
           operation: 'rename',
           from: entryName(entry, entry.operation.targetPath),
@@ -678,7 +683,7 @@ export async function applyTransaction(
           phase: 'install',
           path: entry.operation.relativePath,
         })
-        if (!entry.operation.skipPreInstallRecheck) await beforeMutation?.()
+        if (!entry.operation.skipPreInstallRecheck) await revalidateBeforeMutation()
         const prepared = await runStableOperation(entryParent(entry), {
           operation: 'hash',
           name: entryName(entry, entry.temporaryPath),

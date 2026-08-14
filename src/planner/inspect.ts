@@ -123,17 +123,18 @@ export async function resolveConfinedPath(
   let cursor = root
   for (const segment of normalized.split('/')) {
     cursor = resolve(cursor, segment)
+    let metadata: Awaited<ReturnType<typeof lstat>>
     try {
-      const metadata = await lstat(cursor)
-      if (metadata.isSymbolicLink()) {
-        const resolved = await realpath(cursor)
-        if (isOutside(root, resolved)) {
-          throw new Error(`Artifact path escapes repository through symlink: ${artifactPath}`)
-        }
-      }
+      metadata = await lstat(cursor)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') break
       throw error
+    }
+    if (metadata.isSymbolicLink()) {
+      const resolved = await realpath(cursor)
+      if (isOutside(root, resolved)) {
+        throw new Error(`Artifact path escapes repository through symlink: ${artifactPath}`)
+      }
     }
   }
   return { repositoryRoot: root, path: target }

@@ -25,7 +25,11 @@ import type { ArtifactDrift } from '../../applier/reconcile.js'
 import { createChangePlan } from '../../planner/create-plan.js'
 import { normalizeGeneratedLineEndings, sha256Utf8 } from '../../planner/hash.js'
 import { computePlanHash } from '../../planner/serialize-plan.js'
-import { loadProjectPolicy, type ProjectPolicySource } from '../../schema/load-project.js'
+import {
+  loadProjectPolicy,
+  validateProjectPolicyDirectory,
+  type ProjectPolicySource,
+} from '../../schema/load-project.js'
 import { parseYamlDocument } from '../../schema/frontmatter.js'
 import { validateDocument } from '../../schema/validator.js'
 import { policyLockArtifact, POLICY_LOCK_PATH } from '../../planner/policy-lock.js'
@@ -276,6 +280,29 @@ export async function prepareBundleSelection(
   bundles: readonly string[],
   requiredTarget?: string,
 ): Promise<BundleSelectionPreparation> {
+  const manifestPath = '.agent-policy/policy.yaml'
+  const manifestFile = resolve(context.repositoryRoot, ...manifestPath.split('/'))
+  try {
+    await lstat(manifestFile)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    await validateProjectPolicyDirectory(context.repositoryRoot)
+    const content = stringify({
+      schemaVersion: 'v1',
+      toolkitVersion: context.toolkitVersion,
+      bundles: bundles.filter((id) => id !== 'core'),
+      targets: requiredTarget === undefined ? [] : [requiredTarget],
+    })
+    return {
+      sourceChanges: [{
+        path: manifestPath,
+        content,
+        sha256: sha256Utf8(content),
+        operation: 'create',
+      }],
+      overrides: new Map([[manifestPath, content]]),
+    }
+  }
   const source = await loadProjectPolicy(context.repositoryRoot)
   const current = await readText(context.repositoryRoot, source.path)
   if (current === undefined) throw policyError('MISSING_POLICY_SOURCE', `Missing canonical source ${source.path}`, source.path)
@@ -414,7 +441,9 @@ export async function compileCodex(
   requestedBundles?: readonly string[],
   sourceOverrides: ReadonlyMap<string, string> = new Map(),
 ): Promise<CompiledCodexProjection> {
-  const loadedProject = await loadProjectPolicy(context.repositoryRoot)
+  const loadedProject = await loadProjectPolicy(context.repositoryRoot, {
+    manifestOverride: sourceOverrides.get('.agent-policy/policy.yaml'),
+  })
   const manifestSource = sourceOverrides.get(loadedProject.path) ?? await readText(context.repositoryRoot, loadedProject.path)
   const project = policyWithBundles(
     manifestSource === undefined ? loadedProject : policyWithManifestOverride(loadedProject, manifestSource),
