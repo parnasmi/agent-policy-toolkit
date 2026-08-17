@@ -27,9 +27,17 @@ export interface MigrationProvenance {
   readonly editorial: readonly MigrationEditorialRecord[]
 }
 
+export interface CanonicalWorkflowSkill {
+  readonly name: string
+  readonly description: string
+  readonly body: string
+  readonly path: string
+}
+
 export interface CanonicalCatalog {
   readonly rules: readonly RuleSource[]
   readonly provenance: MigrationProvenance
+  readonly workflowSkills: readonly CanonicalWorkflowSkill[]
 }
 
 function catalogError(code: string, message: string, path: string, ruleId?: string): PolicyError {
@@ -122,5 +130,82 @@ export async function loadCatalog(toolkitRoot: string): Promise<CanonicalCatalog
     provenancePath,
   )
 
-  return { rules, provenance }
+  const workflowSkills = await loadWorkflowSkills(toolkitRoot)
+
+  return { rules, provenance, workflowSkills }
 }
+
+/** Discover and load canonical workflow skills from skills/* /SKILL.md. */
+export async function loadWorkflowSkills(toolkitRoot: string): Promise<readonly CanonicalWorkflowSkill[]> {
+  const root = resolve(toolkitRoot)
+  const skillsDirectory = resolve(root, 'skills')
+  let canonicalSkillsDirectory: string
+  try {
+    const [canonicalRoot, canonicalSkills] = await Promise.all([realpath(root), realpath(skillsDirectory)])
+    if (!isWithin(canonicalRoot, canonicalSkills)) {
+      throw catalogError('PATH_ESCAPES_TOOLKIT', 'Workflow skills directory resolves outside the toolkit root', 'skills')
+    }
+    canonicalSkillsDirectory = canonicalSkills
+  } catch (error) {
+    if (error instanceof PolicyError) throw error
+    return []
+  }
+
+  const entries = await readdir(canonicalSkillsDirectory, { recursive: true, withFileTypes: true })
+  const files = entries
+    .filter((entry) => entry.isFile() && entry.name === 'SKILL.md')
+    .map((entry) => resolve(entry.parentPath, entry.name))
+    .sort((left, right) => sourcePath(root, left).localeCompare(sourcePath(root, right), 'en'))
+
+  const skills: CanonicalWorkflowSkill[] = []
+  const names = new Map<string, string>()
+
+  for (const file of files) {
+    const canonicalFile = await confinedFile(root, file)
+    const path = sourcePath(root, canonicalFile)
+    const text = await readFile(canonicalFile, 'utf8')
+
+    const opening = /^---[\t ]*(?:\r?\n|$)/.exec(text)
+    if (opening === null) {
+      throw catalogError('INVALID_WORKFLOW_SKILL', 'Workflow skill frontmatter must begin at start of document', path)
+    }
+    const frontmatterStart = opening[0].length
+    const closing = /^---[\t ]*(?:\r?\n|$)/m.exec(text.slice(frontmatterStart))
+    if (closing === null) {
+      throw catalogError('INVALID_WORKFLOW_SKILL', 'Workflow skill frontmatter is not terminated', path)
+    }
+    const frontmatterEnd = frontmatterStart + closing.index
+    const bodyStart = frontmatterEnd + closing[0].length
+
+    const frontmatter = parseYamlDocument(text.slice(frontmatterStart, frontmatterEnd), path) as {
+      name?: unknown
+      description?: unknown
+    }
+    if (
+      typeof frontmatter !== 'object' ||
+      frontmatter === null ||
+      typeof frontmatter.name !== 'string' ||
+      frontmatter.name.length === 0 ||
+      typeof frontmatter.description !== 'string' ||
+      frontmatter.description.length === 0
+    ) {
+      throw catalogError('INVALID_WORKFLOW_SKILL', 'Workflow skill frontmatter missing required name or description', path)
+    }
+
+    const existingNamePath = names.get(frontmatter.name)
+    if (existingNamePath !== undefined) {
+      throw catalogError('DUPLICATE_WORKFLOW_SKILL', `Workflow skill ${frontmatter.name} already declared in ${existingNamePath}`, path)
+    }
+    names.set(frontmatter.name, path)
+
+    skills.push({
+      name: frontmatter.name,
+      description: frontmatter.description,
+      body: text.slice(bodyStart).trim(),
+      path,
+    })
+  }
+
+  return skills
+}
+

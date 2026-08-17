@@ -56,3 +56,9 @@ export interface OverlayDirective {
   readonly reason: string
   readonly content?: string
 }
+
+export interface RepositoryInvariantsConfig {
+  /** Ordered project rule identifiers loaded from .agent-policy/invariants.yaml. */
+  readonly rules: readonly string[]
+}
+

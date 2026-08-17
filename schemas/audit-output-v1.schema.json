@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "audit-output-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "scannedFiles", "unmanagedBlocks"],
+  "properties": {
+    "schemaVersion": { "const": "v1" },
+    "scannedFiles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "unmanagedBlocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "sourcePath", "sourceSha256", "lineRange", "content"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+          "sourcePath": { "type": "string" },
+          "sourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "lineRange": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start", "end"],
+            "properties": {
+              "start": { "type": "integer", "minimum": 1 },
+              "end": { "type": "integer", "minimum": 1 }
+            }
+          },
+          "content": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

@@ -1,7 +1,20 @@
 import { parseArgs } from 'node:util'
 
-export type CliCommand = 'init' | 'diff' | 'apply' | 'check' | 'remove'
+export type CliCommand =
+  | 'init'
+  | 'diff'
+  | 'apply'
+  | 'check'
+  | 'remove'
+  | 'audit'
+  | 'validate-report'
+  | 'stage-source'
+  | 'stage-invariant'
+  | 'export-proposal'
+
 export type ReconciliationChoice = 'adopt' | 'regenerate' | 'abort'
+export type OutputFormat = 'json' | 'text'
+export type CliScope = 'project' | 'upstream'
 
 export class CliUsageError extends Error {
   constructor(message: string) {
@@ -20,6 +33,14 @@ export interface CliArguments {
   readonly yes: boolean
   readonly generated: boolean
   readonly reconcile?: ReconciliationChoice
+  readonly path: readonly string[]
+  readonly format?: OutputFormat
+  readonly spec?: string
+  readonly add?: string
+  readonly remove?: string
+  readonly scope?: CliScope
+  readonly output?: string
+  readonly targetPath?: string
 }
 
 function strings(value: unknown): string[] {
@@ -50,6 +71,14 @@ export function parseCliArguments(argv: readonly string[]): CliArguments {
         yes: { type: 'boolean' },
         generated: { type: 'boolean' },
         reconcile: { type: 'string' },
+        path: { type: 'string', multiple: true },
+        format: { type: 'string' },
+        spec: { type: 'string' },
+        add: { type: 'string' },
+        remove: { type: 'string' },
+        scope: { type: 'string' },
+        output: { type: 'string' },
+        'target-path': { type: 'string' },
       },
       strict: true,
       allowPositionals: true,
@@ -69,6 +98,16 @@ export function parseCliArguments(argv: readonly string[]): CliArguments {
     throw new CliUsageError('--reconcile must be adopt, regenerate, or abort')
   }
 
+  const formatValue = parsed.values.format
+  if (formatValue !== undefined && formatValue !== 'json' && formatValue !== 'text') {
+    throw new CliUsageError('--format must be json or text')
+  }
+
+  const scopeValue = parsed.values.scope
+  if (scopeValue !== undefined && scopeValue !== 'project' && scopeValue !== 'upstream') {
+    throw new CliUsageError('--scope must be project or upstream')
+  }
+
   return {
     command,
     positionals: parsed.positionals.slice(command === undefined ? 0 : 1),
@@ -78,12 +117,31 @@ export function parseCliArguments(argv: readonly string[]): CliArguments {
     plan: typeof parsed.values.plan === 'string' ? parsed.values.plan : undefined,
     yes: parsed.values.yes === true,
     generated: parsed.values.generated === true,
+    path: unique(strings(parsed.values.path)),
     ...(reconcileValue === undefined ? {} : { reconcile: reconcileValue }),
+    ...(formatValue === undefined ? {} : { format: formatValue }),
+    ...(scopeValue === undefined ? {} : { scope: scopeValue }),
+    spec: typeof parsed.values.spec === 'string' ? parsed.values.spec : undefined,
+    add: typeof parsed.values.add === 'string' ? parsed.values.add : undefined,
+    remove: typeof parsed.values.remove === 'string' ? parsed.values.remove : undefined,
+    output: typeof parsed.values.output === 'string' ? parsed.values.output : undefined,
+    targetPath: typeof parsed.values['target-path'] === 'string' ? parsed.values['target-path'] : undefined,
   }
 }
 
 export function requireCommand(value: string | undefined): CliCommand {
-  if (value === 'init' || value === 'diff' || value === 'apply' || value === 'check' || value === 'remove') {
+  if (
+    value === 'init'
+    || value === 'diff'
+    || value === 'apply'
+    || value === 'check'
+    || value === 'remove'
+    || value === 'audit'
+    || value === 'validate-report'
+    || value === 'stage-source'
+    || value === 'stage-invariant'
+    || value === 'export-proposal'
+  ) {
     return value
   }
   throw new CliUsageError(value === undefined ? 'A command is required' : `Unknown command: ${value}`)

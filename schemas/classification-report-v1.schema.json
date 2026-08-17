@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "classification-report-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "scannedFiles", "findings"],
+  "properties": {
+    "schemaVersion": { "const": "v1" },
+    "scannedFiles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sourcePath",
+          "sourceSha256",
+          "lineRange",
+          "snippet",
+          "classification",
+          "rationale",
+          "suggestedAction",
+          "evidence"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+          "sourcePath": { "type": "string" },
+          "sourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "lineRange": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start", "end"],
+            "properties": {
+              "start": { "type": "integer", "minimum": 1 },
+              "end": { "type": "integer", "minimum": 1 }
+            }
+          },
+          "snippet": { "type": "string", "minLength": 1 },
+          "classification": {
+            "enum": [
+              "mechanical-control",
+              "shared-core",
+              "repository-invariant",
+              "shared-domain-policy",
+              "project-policy",
+              "canonical-workflow-skill",
+              "agent-role-candidate",
+              "documentation",
+              "speculative-guidance",
+              "insufficient-evidence"
+            ]
+          },
+          "rationale": { "type": "string", "minLength": 1 },
+          "suggestedAction": {
+            "enum": [
+              "recommend-mechanical-control",
+              "stage-invariant",
+              "create-project-rule",
+              "create-overlay",
+              "export-upstream-proposal",
+              "retain-as-project-skill",
+              "retain-documentation",
+              "discard"
+            ]
+          },
+          "suggestedDestination": { "type": "string" },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "summary"],
+            "properties": {
+              "type": {
+                "enum": [
+                  "cross-project-failure",
+                  "domain-failure",
+                  "primary-source",
+                  "standard-contract",
+                  "local-contract",
+                  "architecture-decision",
+                  "local-failure",
+                  "speculative",
+                  "none"
+                ]
+              },
+              "summary": { "type": "string", "minLength": 1 },
+              "references": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": { "type": "object", "properties": { "classification": { "const": "mechanical-control" } } },
+            "then": {
+              "type": "object",
+              "properties": {
+                "suggestedAction": { "enum": ["recommend-mechanical-control", "discard"] },
+                "evidence": {
+                  "type": "object",
+                  "properties": { "type": { "enum": ["local-contract", "standard-contract", "primary-source", "domain-failure", "cross-project-failure"] } }
+                }
+              }
+            }
+          },
+          {
+            "if": { "type": "object", "properties": { "classification": { "const": "shared-core" } } },
+            "then": {
+              "type": "object",
+              "properties": {
+                "suggestedAction": { "enum": ["export-upstream-proposal", "discard"] },
+                "evidence": {
+                  "type": "object",
+                  "properties": { "type": { "const": "cross-project-failure" } }
+                }
+              }
+            }
+          },
+          {
+            "if": { "type": "object", "properties": { "classification": { "const": "repository-invariant" } } },
+            "then": {
+              "type": "object",
+              "properties": {
+                "suggestedAction": { "enum": ["stage-invariant", "discard"] },
+                "evidence": {
+                  "type": "object",
+                  "properties": { "type": { "enum": ["local-contract", "architecture-decision", "local-failure"] } }
+                }
+              }
+            }
+          },
+          {
+            "if": { "type": "object", "properties": { "classification": { "const": "shared-domain-policy" } } },
+            "then": {
+              "type": "object",
+              "properties": {
+                "suggestedAction": { "enum": ["export-upstream-proposal", "create-overlay", "discard"] },
+                "evidence": {
+                  "type": "object",
+                  "properties": { "type": { "enum": ["domain-failure", "primary-source", "standard-contract"] } }
+                }
+              }
+            }
+          },
+          {
+            "if": { "type": "object", "properties": { "classification": { "const": "project-policy" } } },
+            "then": {
+              "type": "object",
+              "properties": {
+                "suggestedAction": { "enum": ["create-project-rule", "create-overlay", "discard"] },
+                "evidence": {
+                  "type": "object",
+                  "properties": { "type": { "enum": ["local-contract", "architecture-decision", "local-failure"] } }
+                }
+              }
+            }
+          },
+          {
+            "if": { "type": "object", "properties": { "classification": { "const": "canonical-workflow-skill" } } },
+            "then": {
+              "type": "object",
+              "properties": {
+                "suggestedAction": { "enum": ["export-upstream-proposal", "retain-as-project-skill", "discard"] },
+                "evidence": {
+                  "type": "object",
+                  "properties": { "type": { "enum": ["local-contract", "primary-source", "cross-project-failure"] } }
+                }
+              }
+            }
+          },
+          {
+            "if": { "type": "object", "properties": { "classification": { "const": "agent-role-candidate" } } },
+            "then": {
+              "type": "object",
+              "properties": {
+                "suggestedAction": { "enum": ["export-upstream-proposal", "discard"] },
+                "evidence": {
+                  "type": "object",
+                  "properties": { "type": { "enum": ["architecture-decision", "cross-project-failure"] } }
+                }
+              }
+            }
+          },
+          {
+            "if": { "type": "object", "properties": { "classification": { "enum": ["documentation", "speculative-guidance", "insufficient-evidence"] } } },
+            "then": {
+              "type": "object",
+              "properties": {
+                "suggestedAction": { "enum": ["retain-documentation", "discard"] },
+                "evidence": {
+                  "type": "object",
+                  "properties": { "type": { "enum": ["speculative", "none", "local-contract", "architecture-decision"] } }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

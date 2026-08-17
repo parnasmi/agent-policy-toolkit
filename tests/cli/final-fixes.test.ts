@@ -140,12 +140,18 @@ describe('final foundation lifecycle contracts', () => {
         adapterKnowledgeVersion: 'codex-2026-08-12',
       })
       expect(Object.keys(lock?.managedArtifactHashes ?? {})).toEqual([
+        '.agents/skills/policy-maintainer/SKILL.md',
         '.agents/skills/react/SKILL.md',
         'AGENTS.md',
       ])
       expect(lock?.managedArtifactHashes['AGENTS.md']).toEqual({
         sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
         operation: 'managed-region',
+        owner: '@agent-policy/agent-policy-toolkit',
+      })
+      expect(lock?.managedArtifactHashes['.agents/skills/policy-maintainer/SKILL.md']).toEqual({
+        sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        operation: 'replace',
         owner: '@agent-policy/agent-policy-toolkit',
       })
       expect(lock?.managedArtifactHashes['.agents/skills/react/SKILL.md']).toEqual({
@@ -262,6 +268,7 @@ describe('final foundation lifecycle contracts', () => {
       ])
       expect(removal.removals).toEqual([
         '.agent-policy/policy.lock.json',
+        '.agents/skills/policy-maintainer/SKILL.md',
         '.agents/skills/react/SKILL.md',
       ])
 
@@ -269,6 +276,7 @@ describe('final foundation lifecycle contracts', () => {
       expect(await readFile(policyPath, 'utf8')).toContain('targets: []')
       expect(await readFile(join(root, 'package.json'), 'utf8')).toBe('{"name":"consumer"}\n')
       expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toBe('\n')
+      expect(await exists(join(root, '.agents/skills/policy-maintainer/SKILL.md'))).toBe(false)
       expect(await exists(join(root, '.agents/skills/react/SKILL.md'))).toBe(false)
       expect(await exists(join(root, '.agent-policy/policy.lock.json'))).toBe(false)
     } finally {

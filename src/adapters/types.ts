@@ -1,6 +1,7 @@
 import type { Bundle } from '../domain/policy.js'
 import type { VirtualArtifact } from '../domain/artifacts.js'
 import type { ResolvedPolicy } from '../compiler/resolve-policy.js'
+import type { CanonicalWorkflowSkill } from '../catalog/load-catalog.js'
 
 export interface ScopedProfileProjection {
   readonly id: string
@@ -17,6 +18,7 @@ export interface ProjectionInput {
   readonly existingArtifacts?: ReadonlyMap<string, string>
   readonly repositoryInvariants?: readonly string[]
   readonly scopedProfiles?: readonly ScopedProfileProjection[]
+  readonly workflowSkills?: readonly CanonicalWorkflowSkill[]
 }
 
 export interface HarnessCapabilityProfile {

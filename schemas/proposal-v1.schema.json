@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "proposal-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "behavioralRole",
+    "proposedDestination",
+    "semanticChange",
+    "evidence",
+    "proposer"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "v1" },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["findingId", "sourcePath", "sourceSha256", "lineRange"],
+      "properties": {
+        "findingId": { "type": "string" },
+        "sourcePath": { "type": "string" },
+        "sourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "lineRange": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end"],
+          "properties": {
+            "start": { "type": "integer", "minimum": 1 },
+            "end": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "behavioralRole": {
+      "enum": [
+        "mechanical-control",
+        "shared-core",
+        "shared-domain-policy",
+        "canonical-workflow-skill",
+        "agent-role-candidate",
+        "shared-documentation"
+      ]
+    },
+    "proposedDestination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": ["rule", "bundle", "skill", "role", "mechanical-control", "documentation"]
+        },
+        "targetId": { "type": "string" },
+        "targetBundle": { "type": "string" }
+      }
+    },
+    "semanticChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "rationale"],
+      "properties": {
+        "summary": { "type": "string" },
+        "instruction": { "type": "string" },
+        "rationale": { "type": "string" },
+        "exceptions": { "type": "string" },
+        "examples": { "type": "string" },
+        "verification": { "type": "string" }
+      }
+    },
+    "ruleMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strength", "applicability", "override", "enforcement"],
+      "properties": {
+        "strength": { "enum": ["required", "recommended"] },
+        "applicability": { "type": "object", "additionalProperties": true },
+        "override": {
+          "enum": [
+            "forbidden",
+            "project-overlay",
+            "explicit-task",
+            "project-overlay-or-explicit-task"
+          ]
+        },
+        "enforcement": { "enum": ["prompt", "mechanical", "hybrid", "documentation"] },
+        "aliases": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "summary"],
+      "properties": {
+        "type": {
+          "enum": [
+            "cross-project-failure",
+            "domain-failure",
+            "primary-source",
+            "standard-contract",
+            "speculative"
+          ]
+        },
+        "summary": { "type": "string" },
+        "references": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "proposer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context"],
+      "properties": {
+        "repository": { "type": "string" },
+        "context": { "type": "string" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "type": "object", "properties": { "behavioralRole": { "const": "shared-core" } } },
+      "then": {
+        "type": "object",
+        "properties": {
+          "proposedDestination": { "type": "object", "properties": { "kind": { "const": "rule" } } },
+          "evidence": { "type": "object", "properties": { "type": { "const": "cross-project-failure" } } }
+        }
+      }
+    },
+    {
+      "if": { "type": "object", "properties": { "behavioralRole": { "const": "shared-domain-policy" } } },
+      "then": {
+        "type": "object",
+        "properties": {
+          "proposedDestination": { "type": "object", "properties": { "kind": { "enum": ["rule", "bundle"] } } },
+          "evidence": { "type": "object", "properties": { "type": { "enum": ["domain-failure", "primary-source", "standard-contract"] } } }
+        }
+      }
+    },
+    {
+      "if": { "type": "object", "properties": { "behavioralRole": { "const": "canonical-workflow-skill" } } },
+      "then": { "type": "object", "properties": { "proposedDestination": { "type": "object", "properties": { "kind": { "const": "skill" } } } } }
+    },
+    {
+      "if": { "type": "object", "properties": { "behavioralRole": { "const": "agent-role-candidate" } } },
+      "then": { "type": "object", "properties": { "proposedDestination": { "type": "object", "properties": { "kind": { "const": "role" } } } } }
+    },
+    {
+      "if": { "type": "object", "properties": { "behavioralRole": { "const": "mechanical-control" } } },
+      "then": { "type": "object", "properties": { "proposedDestination": { "type": "object", "properties": { "kind": { "const": "mechanical-control" } } } } }
+    },
+    {
+      "if": { "type": "object", "properties": { "behavioralRole": { "const": "shared-documentation" } } },
+      "then": { "type": "object", "properties": { "proposedDestination": { "type": "object", "properties": { "kind": { "const": "documentation" } } } } }
+    },
+    {
+      "if": { "type": "object", "properties": { "proposedDestination": { "type": "object", "properties": { "kind": { "const": "rule" } } } } },
+      "then": {
+        "type": "object",
+        "required": ["ruleMetadata"],
+        "properties": {
+          "ruleMetadata": { "type": "object" },
+          "semanticChange": {
+            "type": "object",
+            "required": ["instruction"],
+            "properties": {
+              "instruction": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
