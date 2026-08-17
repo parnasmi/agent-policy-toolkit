@@ -4,7 +4,15 @@ import { Ajv2020, type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.
 
 import { PolicyError, type Diagnostic } from '../domain/diagnostics.js'
 
-export type SchemaId = 'rule-v1' | 'bundle-v1' | 'project-policy-v1' | 'overlay-v1' | 'policy-lock-v1'
+export type SchemaId =
+  | 'rule-v1'
+  | 'bundle-v1'
+  | 'project-policy-v1'
+  | 'overlay-v1'
+  | 'policy-lock-v1'
+  | 'audit-output-v1'
+  | 'classification-report-v1'
+  | 'proposal-v1'
 
 const schemaFiles: Record<SchemaId, string> = {
   'rule-v1': 'rule-v1.schema.json',
@@ -12,6 +20,9 @@ const schemaFiles: Record<SchemaId, string> = {
   'project-policy-v1': 'project-policy-v1.schema.json',
   'overlay-v1': 'overlay-v1.schema.json',
   'policy-lock-v1': 'policy-lock-v1.schema.json',
+  'audit-output-v1': 'audit-output-v1.schema.json',
+  'classification-report-v1': 'classification-report-v1.schema.json',
+  'proposal-v1': 'proposal-v1.schema.json',
 }
 
 const ajv = new Ajv2020({ strict: true, allErrors: true })
