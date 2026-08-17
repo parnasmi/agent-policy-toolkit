@@ -5,6 +5,11 @@ import { runCheck } from './commands/check.js'
 import { runDiff } from './commands/diff.js'
 import { runInit } from './commands/init.js'
 import { runRemove } from './commands/remove.js'
+import { runAuditCommand } from './commands/audit.js'
+import { runValidateReportCommand } from './commands/validate-report.js'
+import { runStageSourceCommand } from './commands/stage-source.js'
+import { runStageInvariantCommand } from './commands/stage-invariant.js'
+import { runExportProposalCommand } from './commands/export-proposal.js'
 import { formatError, type CommandContext } from './commands/common.js'
 
 export interface FileSystemPorts {
@@ -32,6 +37,12 @@ Usage:
   agent-policy check
   agent-policy remove --target codex --plan <absolute-plan-path>
   agent-policy remove --generated --plan <absolute-plan-path>
+  agent-policy audit [--path <glob>] [--format json|text]
+  agent-policy validate-report <path/to/report.json>
+  agent-policy stage-source [--scope project|upstream] --spec <spec.yaml|json> --plan <absolute-plan-path>
+  agent-policy stage-invariant --add <ruleId> [--spec <spec.yaml|json>] --plan <absolute-plan-path>
+  agent-policy stage-invariant --remove <ruleId> --plan <absolute-plan-path>
+  agent-policy export-proposal --spec <spec.yaml|json> [--output <path/to/proposal.yaml>]
 
 Drift reconciliation: add --reconcile adopt|regenerate|abort, or choose interactively when supported.
 
@@ -59,6 +70,11 @@ async function dispatch(args: CliArguments, io: CliIo, commandContext: CommandCo
     case 'apply': return runApply(args, io, commandContext)
     case 'check': return runCheck(args, io, commandContext)
     case 'remove': return runRemove(args, io, commandContext)
+    case 'audit': return runAuditCommand(args, io, commandContext)
+    case 'validate-report': return runValidateReportCommand(args, io, commandContext)
+    case 'stage-source': return runStageSourceCommand(args, io, commandContext)
+    case 'stage-invariant': return runStageInvariantCommand(args, io, commandContext)
+    case 'export-proposal': return runExportProposalCommand(args, io, commandContext)
   }
 }
 
