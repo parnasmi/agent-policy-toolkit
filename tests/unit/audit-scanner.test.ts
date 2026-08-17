@@ -229,4 +229,24 @@ describe('Deterministic audit scanner (src/audit/scan.ts)', () => {
     expect(result.unmanagedBlocks).toEqual([])
     expect(validateDocument('audit-output-v1', result, 'audit-output.json')).toEqual(result)
   })
+
+  it('deduplicates paths in scannedFiles and does not duplicate unmanaged blocks', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-policy-audit-'))
+
+    const agentsContent = [
+      '# Project Guidelines',
+      'Guideline text.',
+    ].join('\n')
+
+    await writeFile(join(root, 'AGENTS.md'), agentsContent, 'utf8')
+
+    const result = await scanUnmanagedContent(root, {
+      paths: ['AGENTS.md', './AGENTS.md', 'AGENTS.md'],
+    })
+
+    expect(result.schemaVersion).toBe('v1')
+    expect(result.scannedFiles).toEqual(['AGENTS.md'])
+    expect(result.unmanagedBlocks).toHaveLength(1)
+    expect(validateDocument('audit-output-v1', result, 'audit-output.json')).toEqual(result)
+  })
 })

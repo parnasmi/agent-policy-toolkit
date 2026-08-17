@@ -128,6 +128,7 @@ export async function scanUnmanagedContent(
     : ['AGENTS.md']
 
   const scannedFiles: string[] = []
+  const seenPaths = new Set<string>()
   const unmanagedBlocks: UnmanagedBlock[] = []
   let idCounter = 0
 
@@ -180,6 +181,10 @@ export async function scanUnmanagedContent(
       continue
     }
 
+    if (seenPaths.has(normalizedRelPath)) {
+      continue
+    }
+
     let fileContent: string
     try {
       const canonicalFile = await realpath(resolvedPath)
@@ -209,6 +214,7 @@ export async function scanUnmanagedContent(
       continue
     }
 
+    seenPaths.add(normalizedRelPath)
     scannedFiles.push(normalizedRelPath)
 
     const { blocks, nextIdCounter } = extractUnmanagedBlocksForFile(
