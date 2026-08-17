@@ -443,6 +443,7 @@ export async function compileCodex(
 ): Promise<CompiledCodexProjection> {
   const loadedProject = await loadProjectPolicy(context.repositoryRoot, {
     manifestOverride: sourceOverrides.get('.agent-policy/policy.yaml'),
+    sourceOverrides,
   })
   const manifestSource = sourceOverrides.get(loadedProject.path) ?? await readText(context.repositoryRoot, loadedProject.path)
   const project = policyWithBundles(
@@ -471,18 +472,23 @@ export async function compileCodex(
   throwDiagnostics(resolvedPolicy.diagnostics)
   const sourcePaths = [
     project.path,
+    ...project.rulePaths,
     ...project.overlayPaths,
     ...(project.invariantsPath === undefined ? [] : [project.invariantsPath]),
   ]
   const canonicalSourceHash = await sourceHash(context.repositoryRoot, sourcePaths, sourceOverrides)
   const existing = await existingArtifacts(context.repositoryRoot, resolvedPolicy)
+  const invariantInstructions = (resolvedPolicy.invariants ?? []).map((r) => {
+    const instruction = r.replacement ?? r.instruction
+    return [instruction, ...r.addenda].join('\n\n')
+  })
   const input: ProjectionInput = {
     toolkitVersion: context.toolkitVersion,
     canonicalSourceHash,
     resolvedPolicy,
     bundles,
     existingArtifacts: existing,
-    repositoryInvariants: project.repositoryInvariants,
+    repositoryInvariants: invariantInstructions,
     scopedProfiles: scopedProfileProjections(project),
   }
   const projectedArtifacts = await codexAdapter.project(input)

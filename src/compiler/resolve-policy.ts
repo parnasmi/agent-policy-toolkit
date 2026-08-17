@@ -1,6 +1,6 @@
-import type { Bundle, ProjectPolicy, Rule } from '../domain/policy.js'
-import type { Diagnostic } from '../domain/diagnostics.js'
-import { applyOverlays, type OverlayDirectiveSource, type OverlayRule } from './overlays.js'
+import type { Bundle, ProjectPolicy, Rule } from "../domain/policy.js"
+import type { Diagnostic } from "../domain/diagnostics.js"
+import { applyOverlays, type OverlayDirectiveSource, type OverlayRule } from "./overlays.js"
 
 export interface PolicyCatalog {
   readonly rules: readonly Rule[]
@@ -27,10 +27,13 @@ export interface ResolvedPolicy {
   readonly rules: readonly ScopedRule[]
   readonly bundles: readonly ResolvedBundle[]
   readonly diagnostics: readonly Diagnostic[]
+  readonly invariants?: readonly OverlayRule[]
 }
 
 interface ProjectWithOverlays extends ProjectPolicy {
   readonly overlays?: readonly OverlayDirectiveSource[]
+  readonly rules?: readonly Rule[]
+  readonly invariantRuleIds?: readonly string[]
 }
 
 function orderedBundles(bundles: ReadonlyMap<string, Bundle>, requested: readonly string[]): Bundle[] {
@@ -66,10 +69,12 @@ function byIdentifier(rules: readonly OverlayRule[]): ReadonlyMap<string, Overla
 
 /** Resolve declared bundles in manifest order, retaining every overlay and applicability provenance. */
 export function resolvePolicy(catalog: PolicyCatalog, project: ProjectWithOverlays): ResolvedPolicy {
-  const overlays = applyOverlays(catalog.rules, project.overlays ?? [])
+  const projectRules = project.rules ?? []
+  const allRules = [...catalog.rules, ...projectRules]
+  const overlays = applyOverlays(allRules, project.overlays ?? [])
   const selectedBundles = orderedBundles(
     catalog.bundles,
-    catalog.bundles.has('core') ? ['core', ...project.bundles] : project.bundles,
+    catalog.bundles.has("core") ? ["core", ...project.bundles] : project.bundles,
   )
   const resolvedByIdentifier = byIdentifier(overlays.rules)
   const rulesById = new Map<string, ScopedRule>()
@@ -93,5 +98,17 @@ export function resolvePolicy(catalog: PolicyCatalog, project: ProjectWithOverla
     bundles.push({ id: bundle.id, description: bundle.description, applicability: bundle.applicability, rules: members })
   }
 
-  return { rules: [...rulesById.values()], bundles, diagnostics: overlays.diagnostics }
+  const invariantIds = project.invariantRuleIds ?? []
+  const resolvedInvariants: OverlayRule[] = []
+  for (const identifier of invariantIds) {
+    const rule = resolvedByIdentifier.get(identifier)
+    if (rule === undefined) {
+      throw new Error(`Invariant references unknown rule ${identifier}`)
+    }
+    if (!rule.disabled) {
+      resolvedInvariants.push(rule)
+    }
+  }
+
+  return { rules: [...rulesById.values()], bundles, diagnostics: overlays.diagnostics, invariants: resolvedInvariants }
 }

@@ -214,33 +214,42 @@ describe('canonical source schema validation', () => {
     })
   })
 
-  it('loads ordered atomic Repository Invariants from the canonical source', async () => {
+  it('loads ordered atomic Repository Invariants and project rules from the canonical source', async () => {
     const root = await mkdtemp(join(tmpdir(), 'agent-policy-schema-'))
     const policyDir = join(root, '.agent-policy')
-    await mkdir(policyDir)
+    const rulesDir = join(policyDir, 'rules', 'repository')
+    await mkdir(rulesDir, { recursive: true })
     await writeFile(
       join(policyDir, 'policy.yaml'),
       'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.2\nbundles: []\ntargets: [codex]\n',
     )
     await writeFile(
+      join(rulesDir, 'package-manager.md'),
+      markdown({ id: 'repository.package-manager', status: 'active', strength: 'required', applicability: {}, override: 'forbidden', enforcement: 'prompt', aliases: [] }, '## Instruction\n\nUse pnpm for repository commands.\n\n## Rationale\n\nOne package manager.\n'),
+    )
+    await writeFile(
+      join(rulesDir, 'review-diff.md'),
+      markdown({ id: 'repository.review-diff', status: 'active', strength: 'required', applicability: {}, override: 'forbidden', enforcement: 'prompt', aliases: [] }, '## Instruction\n\nReview the complete diff before committing.\n\n## Rationale\n\nFull review catches drift.\n'),
+    )
+    await writeFile(
       join(policyDir, 'invariants.yaml'),
       [
         'rules:',
-        '  - id: repository.package-manager',
-        '    instruction: Use pnpm for repository commands.',
-        '    rationale: One package manager keeps installs reproducible.',
-        '  - id: repository.review-diff',
-        '    instruction: Review the complete diff before committing.',
-        '    rationale: Full review catches generated drift.',
+        '  - repository.package-manager',
+        '  - repository.review-diff',
         '',
       ].join('\n'),
     )
 
     await expect(loadProjectPolicy(root)).resolves.toMatchObject({
       invariantsPath: '.agent-policy/invariants.yaml',
-      repositoryInvariants: [
-        'Use pnpm for repository commands.',
-        'Review the complete diff before committing.',
+      invariantRuleIds: [
+        'repository.package-manager',
+        'repository.review-diff',
+      ],
+      rulePaths: [
+        '.agent-policy/rules/repository/package-manager.md',
+        '.agent-policy/rules/repository/review-diff.md',
       ],
     })
   })
@@ -255,7 +264,7 @@ describe('canonical source schema validation', () => {
     )
     await writeFile(
       join(policyDir, 'invariants.yaml'),
-      'rules:\n  - id: repository.same\n    instruction: First.\n  - id: repository.same\n    instruction: Second.\n',
+      'rules:\n  - repository.same\n  - repository.same\n',
     )
 
     await expect(loadProjectPolicy(root)).rejects.toMatchObject({
@@ -273,7 +282,7 @@ describe('canonical source schema validation', () => {
     )
     await writeFile(
       join(policyDir, 'invariants.yaml'),
-      'rules:\n  - id: repository\n    instruction: Use pnpm.\n',
+      'rules:\n  - repository\n',
     )
 
     await expect(loadProjectPolicy(root)).rejects.toMatchObject({

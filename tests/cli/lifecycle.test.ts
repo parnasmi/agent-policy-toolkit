@@ -252,19 +252,25 @@ describe('policy lifecycle commands', () => {
     const parent = await mkdtemp(join(tmpdir(), 'agent-policy-invariants-'))
     const root = join(parent, 'consumer')
     const planPath = join(parent, 'invariants-plan.json')
-    await mkdir(join(root, '.agent-policy'), { recursive: true })
+    await mkdir(join(root, '.agent-policy', 'rules', 'repository'), { recursive: true })
     await writeFile(
       join(root, '.agent-policy/policy.yaml'),
       'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.2\nbundles: []\ntargets: [codex]\n',
     )
     await writeFile(
+      join(root, '.agent-policy/rules/repository/package-manager.md'),
+      '---\nid: "repository.package-manager"\nstatus: "active"\nstrength: "required"\napplicability: {}\noverride: "forbidden"\nenforcement: "prompt"\naliases: []\n---\n## Instruction\n\nUse pnpm for repository commands.\n\n## Rationale\n\nOne package manager keeps installs reproducible.\n',
+    )
+    await writeFile(
+      join(root, '.agent-policy/rules/repository/review-diff.md'),
+      '---\nid: "repository.review-diff"\nstatus: "active"\nstrength: "required"\napplicability: {}\noverride: "forbidden"\nenforcement: "prompt"\naliases: []\n---\n## Instruction\n\nReview the complete diff before committing.\n\n## Rationale\n\nFull review catches generated drift.\n',
+    )
+    await writeFile(
       join(root, '.agent-policy/invariants.yaml'),
       [
         'rules:',
-        '  - id: repository.package-manager',
-        '    instruction: Use pnpm for repository commands.',
-        '  - id: repository.review-diff',
-        '    instruction: Review the complete diff before committing.',
+        '  - repository.package-manager',
+        '  - repository.review-diff',
         '',
       ].join('\n'),
     )
