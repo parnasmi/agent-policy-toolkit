@@ -4,7 +4,7 @@
   "description": "Portable, layered policy compilation for AI coding-agent harnesses",
   "type": "module",
   "bin": { "agent-policy": "./dist/cli/bin.js" },
-  "files": ["dist", "catalog", "schemas", "README.md", "LICENSE", "docs", "CHANGELOG.md"],
+  "files": ["dist", "catalog", "schemas", "skills", "README.md", "LICENSE", "docs", "CHANGELOG.md"],
   "engines": { "node": ">=22.20.0" },
   "scripts": {
     "build": "tsc -p tsconfig.json",

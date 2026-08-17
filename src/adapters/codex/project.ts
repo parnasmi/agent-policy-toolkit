@@ -4,6 +4,7 @@ import { renderBundle } from '../../compiler/render-bundle.js'
 import type { Bundle } from '../../domain/policy.js'
 import type { VirtualArtifact } from '../../domain/artifacts.js'
 import type { HarnessAdapter, ProjectionInput } from '../types.js'
+import type { CanonicalWorkflowSkill } from '../../catalog/load-catalog.js'
 import { codexCapabilities } from './capabilities.js'
 import {
   MANAGED_REGION_END,
@@ -130,6 +131,26 @@ ${renderBundle(bundle, input.resolvedPolicy, 'domain-skill')}
   }
 }
 
+function workflowSkillArtifact(skill: CanonicalWorkflowSkill, input: ProjectionInput): VirtualArtifact {
+  const template = `---
+name: ${skill.name}
+description: ${JSON.stringify(skill.description)}
+---
+
+${generatedHeader(input)}
+
+${skill.body}
+`
+  const content = materializeArtifactHash(template)
+  return {
+    path: `.agents/skills/${skill.name}/SKILL.md`,
+    content,
+    sha256: sha256(content),
+    owner,
+    operation: 'replace',
+  }
+}
+
 export async function projectCodex(input: ProjectionInput): Promise<readonly VirtualArtifact[]> {
   const content = projectManagedRegion(input.existingArtifacts?.get('AGENTS.md'), rootBody(input))
   const agents: VirtualArtifact = {
@@ -146,7 +167,8 @@ export async function projectCodex(input: ProjectionInput): Promise<readonly Vir
       if (bundle === undefined) throw new Error(`Missing source bundle ${id} for Codex projection`)
       return skillArtifact(bundle, input)
     })
-  return [agents, ...skills]
+  const workflowSkills = (input.workflowSkills ?? []).map((skill) => workflowSkillArtifact(skill, input))
+  return [agents, ...skills, ...workflowSkills]
 }
 
 export const codexAdapter = { capabilities: codexCapabilities, project: projectCodex } satisfies HarnessAdapter

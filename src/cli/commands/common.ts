@@ -490,6 +490,7 @@ export async function compileCodex(
     existingArtifacts: existing,
     repositoryInvariants: invariantInstructions,
     scopedProfiles: scopedProfileProjections(project),
+    workflowSkills: catalog.workflowSkills,
   }
   const projectedArtifacts = await codexAdapter.project(input)
   const lock = policyLockArtifact(context.toolkitVersion, canonicalSourceHash, projectedArtifacts)
