@@ -15,7 +15,7 @@ import { createChangePlan } from '../../src/planner/create-plan.js'
 import { runCli, type CliIo } from '../../src/cli/main.js'
 
 const owner = '@agent-policy/agent-policy-toolkit'
-const toolkitVersion = '0.1.0-alpha.2'
+const toolkitVersion = '0.1.0-alpha.3'
 const start = `<!-- agent-policy:start owner=${owner} -->`
 const end = '<!-- agent-policy:end -->'
 const fixture = fileURLToPath(new URL('../fixtures/repositories/unmanaged-agents', import.meta.url))

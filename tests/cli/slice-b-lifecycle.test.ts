@@ -8,7 +8,7 @@ import { runCli, type CliIo } from '../../src/cli/main.js'
 import { validateDocument } from '../../src/schema/validator.js'
 
 describe.sequential('Slice B CLI Lifecycle Integration Tests', { timeout: 20000 }, () => {
-  const toolkitVersion = '0.1.0-alpha.2'
+  const toolkitVersion = '0.1.0-alpha.3'
 
   function createTestIo(): CliIo {
     return {

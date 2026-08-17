@@ -1,5 +1,5 @@
 schemaVersion: v1
-toolkitVersion: 0.1.0-alpha.2
+toolkitVersion: 0.1.0-alpha.3
 bundles: [typescript, react]
 targets: [codex]
 profiles:

@@ -2,6 +2,20 @@
 
 All notable changes to Agent Policy Toolkit are documented here.
 
+## [0.1.0-alpha.3] - 2026-08-17
+
+### Added
+
+- Slice B implementation: `policy-maintainer`, deterministic classification audit, immutable invariant/rule staging, upstream proposal export, and upstream scope confinement.
+- Deterministic JSON Schemas (Draft 2020-12) for `audit-output-v1`, `classification-report-v1`, and `proposal-v1`.
+- Deterministic unmanaged content scanner (`agent-policy audit`) discovering instructions outside Managed Regions and calculating 1-indexed line spans with full-file SHA-256 digests.
+- Strict classification report validator (`agent-policy validate-report`) verifying report structure, SHA-256 freshness against on-disk files, line ranges, and exact snippet slicing.
+- Immutable Repository Invariant staging (`agent-policy stage-invariant --add/--remove`) mapping atomic markdown rules under `.agent-policy/rules/` and updating `.agent-policy/invariants.yaml` (`rules: string[]`).
+- Project rule and overlay staging (`agent-policy stage-source`).
+- Upstream scope confinement and gating (`--scope upstream`) enforcing canonical upstream roots (`catalog/rules/`, `catalog/bundles/`, `catalog/evidence/`, `catalog/migrations/`, `skills/`).
+- Portable upstream proposal exporter (`agent-policy export-proposal`) formatting validated YAML with standard headers.
+- Canonical `policy-maintainer` workflow skill (`skills/policy-maintainer/SKILL.md`) providing 6-tier classification rubric and projected for Codex into `.agents/skills/policy-maintainer/SKILL.md`.
+
 ## [0.1.0-alpha.2] - 2026-08-14
 
 ### Fixed

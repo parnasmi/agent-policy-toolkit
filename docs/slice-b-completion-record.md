@@ -4,7 +4,7 @@
 **Status:** COMPLETED / VERIFIED  
 **Slice:** Slice B — `policy-maintainer`, Classification Audit, and Upstream Proposals  
 **Package:** `@agent-policy/agent-policy-toolkit`  
-**Foundation Release:** `0.1.0-alpha.2` (Slice B pre-release candidate `0.1.0-alpha.3`)  
+**Release:** `0.1.0-alpha.3`
 **Design Spec:** [`docs/superpowers/specs/2026-08-17-agent-policy-toolkit-policy-maintainer-design.md`](./superpowers/specs/2026-08-17-agent-policy-toolkit-policy-maintainer-design.md)  
 **Implementation Plan:** [`docs/superpowers/plans/2026-08-17-agent-policy-toolkit-policy-maintainer.md`](./superpowers/plans/2026-08-17-agent-policy-toolkit-policy-maintainer.md)  
 

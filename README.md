@@ -2,7 +2,7 @@
 
 Agent Policy Toolkit is a portable, layered policy compiler for AI coding-agent harnesses. It keeps a small Core Policy Bundle in startup context, projects contextual bundles into discoverable skills, and makes every repository mutation go through a reviewed, hash-bound Change Plan.
 
-`0.1.0-alpha.2` is the second prerelease. Codex is the only implemented adapter and is explicitly experimental. The package is intended for evaluation and dogfooding; it does not claim stable cross-harness compatibility or semantic model-activation accuracy.
+`0.1.0-alpha.3` is the third prerelease. Codex is the only implemented adapter and is explicitly experimental. The package is intended for evaluation and dogfooding; it does not claim stable cross-harness compatibility or semantic model-activation accuracy.
 
 ## Requirements
 
@@ -21,13 +21,13 @@ The published package includes the maintainer and consumer guidance under `docs/
 Pin the exact prerelease in a consumer repository:
 
 ```bash
-corepack pnpm add --save-dev --save-exact @agent-policy/agent-policy-toolkit@0.1.0-alpha.2
+corepack pnpm add --save-dev --save-exact @agent-policy/agent-policy-toolkit@0.1.0-alpha.3
 ```
 
 For dogfood before registry publication, install the verified tarball recorded in the release report:
 
 ```bash
-corepack pnpm add --save-dev --save-exact /absolute/path/to/agent-policy-agent-policy-toolkit-0.1.0-alpha.2.tgz
+corepack pnpm add --save-dev --save-exact /absolute/path/to/agent-policy-agent-policy-toolkit-0.1.0-alpha.3.tgz
 ```
 
 Do not use a workspace, link, branch, or version range for a dogfood installation. Keep the recorded SHA-256 with the consumer evidence.

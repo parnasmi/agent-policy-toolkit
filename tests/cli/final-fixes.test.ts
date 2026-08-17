@@ -38,7 +38,7 @@ async function consumer(): Promise<{ readonly parent: string; readonly root: str
     join(root, '.agent-policy/policy.yaml'),
     [
       'schemaVersion: v1',
-      'toolkitVersion: 0.1.0-alpha.2',
+      'toolkitVersion: 0.1.0-alpha.3',
       'bundles: [react]',
       'targets: []',
       'overlays: [overlays/react.yaml]',
@@ -136,7 +136,7 @@ describe('final foundation lifecycle contracts', () => {
       const lock = await loadPolicyLock(root)
       expect(lock).toMatchObject({
         schemaVersion: 'v1',
-        toolkitVersion: '0.1.0-alpha.2',
+        toolkitVersion: '0.1.0-alpha.3',
         adapterKnowledgeVersion: 'codex-2026-08-12',
       })
       expect(Object.keys(lock?.managedArtifactHashes ?? {})).toEqual([
@@ -394,7 +394,7 @@ describe('final foundation lifecycle contracts', () => {
         join(root, '.agent-policy/policy.yaml'),
         [
           'schemaVersion: v1',
-          'toolkitVersion: 0.1.0-alpha.2',
+          'toolkitVersion: 0.1.0-alpha.3',
           'bundles: []',
           'targets: [codex]',
           'overlays: [overlays/react.yaml]',

@@ -65,7 +65,7 @@ const resolvedPolicy = resolvePolicy(
   { rules, bundles },
   {
     schemaVersion: 'v1',
-    toolkitVersion: '0.1.0-alpha.2',
+    toolkitVersion: '0.1.0-alpha.3',
     bundles: ['typescript'],
     targets: ['codex'],
   },
@@ -73,7 +73,7 @@ const resolvedPolicy = resolvePolicy(
 
 function projectionInput(existingArtifacts: ReadonlyMap<string, string> = new Map()) {
   return {
-    toolkitVersion: '0.1.0-alpha.2',
+    toolkitVersion: '0.1.0-alpha.3',
     canonicalSourceHash: '0123456789abcdef',
     resolvedPolicy,
     bundles,
@@ -153,7 +153,7 @@ describe('Codex adapter contract', () => {
     expect(skill.content).toContain('Do not use for javascript-only, documentation-only.')
     expect(skill.content).toContain('Requires the core policy bundle.')
     expect(skill.content).toContain('Scoped profile web-app applies to paths apps/web/** and workspaces @example/web.')
-    expect(skill.content).toContain('Toolkit version: 0.1.0-alpha.2')
+    expect(skill.content).toContain('Toolkit version: 0.1.0-alpha.3')
     expect(skill.content).toContain('Adapter knowledge version: codex-2026-08-12')
     expect(skill.content).toContain('Canonical source hash: 0123456789abcdef')
     expect(skill.content).toContain('Do not edit; change `.agent-policy/` and regenerate.')

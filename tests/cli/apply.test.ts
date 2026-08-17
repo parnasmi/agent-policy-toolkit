@@ -25,12 +25,12 @@ import { createChangePlan } from '../../src/planner/create-plan.js'
 import { computePlanHash } from '../../src/planner/serialize-plan.js'
 
 const owner = '@agent-policy/agent-policy-toolkit'
-const toolkitVersion = '0.1.0-alpha.2'
+const toolkitVersion = '0.1.0-alpha.3'
 const start = `<!-- agent-policy:start owner=${owner} -->`
 const end = '<!-- agent-policy:end -->'
 const bootstrapPolicy = [
   'schemaVersion: v1',
-  'toolkitVersion: 0.1.0-alpha.2',
+  'toolkitVersion: 0.1.0-alpha.3',
   'bundles: []',
   'targets: [codex]',
   '',

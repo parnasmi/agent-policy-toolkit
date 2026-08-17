@@ -67,7 +67,7 @@ const bundles = new Map<string, Bundle>([
 
 const project = {
   schemaVersion: 'v1',
-  toolkitVersion: '0.1.0-alpha.2',
+  toolkitVersion: '0.1.0-alpha.3',
   bundles: ['feature'],
   targets: ['codex'],
   overlays: [{

@@ -23,7 +23,7 @@ describe('bootstrap source preparation', () => {
     const root = await mkdtemp(join(tmpdir(), 'agent-policy-bootstrap-'))
 
     const result = await prepareBundleSelection(
-      { repositoryRoot: root, toolkitRoot: root, toolkitVersion: '0.1.0-alpha.2' },
+      { repositoryRoot: root, toolkitRoot: root, toolkitVersion: '0.1.0-alpha.3' },
       ['core', 'react'],
       'codex',
     )
@@ -34,7 +34,7 @@ describe('bootstrap source preparation', () => {
     })
     expect(parseYamlDocument(result.sourceChanges[0]?.content ?? '', '.agent-policy/policy.yaml')).toMatchObject({
       schemaVersion: 'v1',
-      toolkitVersion: '0.1.0-alpha.2',
+      toolkitVersion: '0.1.0-alpha.3',
       bundles: ['react'],
       targets: ['codex'],
     })
@@ -44,13 +44,13 @@ describe('bootstrap source preparation', () => {
   it('compiles a staged manifest override without creating it', async () => {
     const root = await mkdtemp(join(tmpdir(), 'agent-policy-bootstrap-'))
     const selection = await prepareBundleSelection(
-      { repositoryRoot: root, toolkitRoot: process.cwd(), toolkitVersion: '0.1.0-alpha.2' },
+      { repositoryRoot: root, toolkitRoot: process.cwd(), toolkitVersion: '0.1.0-alpha.3' },
       ['core', 'react'],
       'codex',
     )
 
     await expect(compileCodex(
-      { repositoryRoot: root, toolkitRoot: process.cwd(), toolkitVersion: '0.1.0-alpha.2' },
+      { repositoryRoot: root, toolkitRoot: process.cwd(), toolkitVersion: '0.1.0-alpha.3' },
       ['core', 'react'],
       selection.overrides,
     )).resolves.toMatchObject({
@@ -66,7 +66,7 @@ describe('bootstrap source preparation', () => {
     await symlink(outside, join(root, '.agent-policy'))
     const manifest = [
       'schemaVersion: v1',
-      'toolkitVersion: 0.1.0-alpha.2',
+      'toolkitVersion: 0.1.0-alpha.3',
       'bundles: [react]',
       'targets: [codex]',
       '',
@@ -76,7 +76,7 @@ describe('bootstrap source preparation', () => {
       diagnostics: [expect.objectContaining({ code: 'PATH_ESCAPES_PROJECT' })],
     } satisfies Partial<PolicyError>)
     await expect(prepareBundleSelection(
-      { repositoryRoot: root, toolkitRoot: root, toolkitVersion: '0.1.0-alpha.2' },
+      { repositoryRoot: root, toolkitRoot: root, toolkitVersion: '0.1.0-alpha.3' },
       ['core', 'react'],
       'codex',
     )).rejects.toMatchObject({
@@ -90,7 +90,7 @@ describe('bootstrap source preparation', () => {
     await symlink(join(root, 'missing-policy-directory'), join(root, '.agent-policy'))
     const manifest = [
       'schemaVersion: v1',
-      'toolkitVersion: 0.1.0-alpha.2',
+      'toolkitVersion: 0.1.0-alpha.3',
       'bundles: [react]',
       'targets: [codex]',
       '',
@@ -100,7 +100,7 @@ describe('bootstrap source preparation', () => {
       diagnostics: [expect.objectContaining({ code: 'PATH_ESCAPES_PROJECT' })],
     } satisfies Partial<PolicyError>)
     await expect(prepareBundleSelection(
-      { repositoryRoot: root, toolkitRoot: root, toolkitVersion: '0.1.0-alpha.2' },
+      { repositoryRoot: root, toolkitRoot: root, toolkitVersion: '0.1.0-alpha.3' },
       ['core', 'react'],
       'codex',
     )).rejects.toMatchObject({

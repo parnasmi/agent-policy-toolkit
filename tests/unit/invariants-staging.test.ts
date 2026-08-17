@@ -11,7 +11,7 @@ import { stageSourceChange } from "../../src/planner/stage-source.js"
 import { readChangePlan } from "../../src/cli/commands/common.js"
 
 describe("Invariant and Rule Staging (Slice B Task 6)", () => {
-  const toolkitVersion = "0.1.0-alpha.2"
+  const toolkitVersion = '0.1.0-alpha.3'
   const toolkitRoot = process.cwd()
 
   async function createInitializedRepo(): Promise<{ repoRoot: string; cleanup: () => Promise<void> }> {

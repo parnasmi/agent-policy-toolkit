@@ -10,7 +10,7 @@ import { stageSourceChange } from '../../src/planner/stage-source.js'
 import { readChangePlan } from '../../src/cli/commands/common.js'
 
 describe('Upstream Scope Staging and Gating (Slice B Task 7)', () => {
-  const toolkitVersion = '0.1.0-alpha.2'
+  const toolkitVersion = '0.1.0-alpha.3'
   const toolkitRoot = process.cwd()
 
   async function createConsumerRepo(): Promise<{ repoRoot: string; cleanup: () => Promise<void> }> {

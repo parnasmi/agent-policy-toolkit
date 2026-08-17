@@ -142,7 +142,7 @@ describe('Deterministic audit scanner (src/audit/scan.ts)', () => {
     await mkdir(join(root, '.agent-policy', 'rules', 'repo'), { recursive: true })
     await writeFile(
       join(root, '.agent-policy', 'policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.2\nbundles: []\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.3\nbundles: []\ntargets: [codex]\n',
       'utf8',
     )
     await writeFile(

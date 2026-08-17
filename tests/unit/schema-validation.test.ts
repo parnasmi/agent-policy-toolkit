@@ -40,7 +40,7 @@ describe('canonical source schema validation', () => {
     const root = await mkdtemp(join(tmpdir(), 'agent-policy-schema-'))
     const manifest = [
       'schemaVersion: v1',
-      'toolkitVersion: 0.1.0-alpha.2',
+      'toolkitVersion: 0.1.0-alpha.3',
       'bundles: [react]',
       'targets: [codex]',
       '',
@@ -48,7 +48,7 @@ describe('canonical source schema validation', () => {
 
     await expect(loadProjectPolicy(root, { manifestOverride: manifest })).resolves.toMatchObject({
       path: '.agent-policy/policy.yaml',
-      toolkitVersion: '0.1.0-alpha.2',
+      toolkitVersion: '0.1.0-alpha.3',
       bundles: ['react'],
       targets: ['codex'],
       overlayPaths: [],
@@ -151,7 +151,7 @@ describe('canonical source schema validation', () => {
     await mkdir(policyDir)
     await writeFile(
       join(policyDir, 'policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.2\nbundles: [core]\ntargets: [codex]\noverlays: [missing-overlay.yaml]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.3\nbundles: [core]\ntargets: [codex]\noverlays: [missing-overlay.yaml]\n',
     )
 
     await expect(loadProjectPolicy(root)).rejects.toBeInstanceOf(PolicyError)
@@ -164,7 +164,7 @@ describe('canonical source schema validation', () => {
     await mkdir(policyDir)
     await writeFile(
       join(policyDir, 'policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.2\nbundles: [core]\ntargets: [codex]\noverlays: [../outside.yaml]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.3\nbundles: [core]\ntargets: [codex]\noverlays: [../outside.yaml]\n',
     )
 
     await expect(loadProjectPolicy(root)).rejects.toBeInstanceOf(PolicyError)
@@ -177,7 +177,7 @@ describe('canonical source schema validation', () => {
     await mkdir(policyDir)
     await writeFile(
       join(policyDir, 'policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.2\nbundles: [core]\ntargets: [codex]\noverlays: [overlay.yaml]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.3\nbundles: [core]\ntargets: [codex]\noverlays: [overlay.yaml]\n',
     )
     await writeFile(outsideOverlay, 'ruleId: core.task-fidelity\noperation: disable\nreason: external\n')
     await symlink(outsideOverlay, join(policyDir, 'overlay.yaml'))
@@ -193,7 +193,7 @@ describe('canonical source schema validation', () => {
       join(policyDir, 'policy.yaml'),
       [
         'schemaVersion: v1',
-        'toolkitVersion: 0.1.0-alpha.2',
+        'toolkitVersion: 0.1.0-alpha.3',
         'bundles: [core]',
         'targets: [codex]',
         'profiles: { default: { concise: true } }',
@@ -221,7 +221,7 @@ describe('canonical source schema validation', () => {
     await mkdir(rulesDir, { recursive: true })
     await writeFile(
       join(policyDir, 'policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.2\nbundles: []\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.3\nbundles: []\ntargets: [codex]\n',
     )
     await writeFile(
       join(rulesDir, 'package-manager.md'),
@@ -260,7 +260,7 @@ describe('canonical source schema validation', () => {
     await mkdir(policyDir)
     await writeFile(
       join(policyDir, 'policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.2\nbundles: []\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.3\nbundles: []\ntargets: [codex]\n',
     )
     await writeFile(
       join(policyDir, 'invariants.yaml'),
@@ -278,7 +278,7 @@ describe('canonical source schema validation', () => {
     await mkdir(policyDir)
     await writeFile(
       join(policyDir, 'policy.yaml'),
-      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.2\nbundles: []\ntargets: [codex]\n',
+      'schemaVersion: v1\ntoolkitVersion: 0.1.0-alpha.3\nbundles: []\ntargets: [codex]\n',
     )
     await writeFile(
       join(policyDir, 'invariants.yaml'),
