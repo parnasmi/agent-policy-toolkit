@@ -116,7 +116,7 @@ Format findings into a JSON document adhering to `classification-report-v1.schem
       "evidence": {
         "type": "architecture-decision",
         "summary": "Local markdown issue tracker defined in docs/agents/issue-tracker.md",
-        "rationale": "Preserves git-native workflow history without external API reliance."
+        "references": ["docs/agents/issue-tracker.md"]
       }
     }
   ]
@@ -220,28 +220,35 @@ When a rule or workflow pattern is discovered in a consumer repository that is b
 A proposal conforms to `proposal-v1.schema.json` and records origin provenance:
 ```yaml
 schemaVersion: v1
-kind: rule
 behavioralRole: shared-core
-destination:
-  suggestedNamespace: core
-  suggestedId: core.verify-diff-boundaries
+proposedDestination:
+  kind: rule
+  targetId: core.verify-diff-boundaries
 origin:
-  consumerRepository: paynet/infokiosk/tms-frontend
-  toolkitVersion: 0.1.0-alpha.2
-  author: AI Policy Maintainer
-  context: Discovered during AGENTS.md classification audit
-summary: Verify git diff boundaries before marking tasks complete
-rationale: Prevents unintended modification of unmanaged files.
+  findingId: block-1
+  sourcePath: AGENTS.md
+  sourceSha256: 4b825dc6394593457a1e0915f0eb5e61a4e2efd9a74c76b97b6e927c348f95c1
+  lineRange:
+    start: 1
+    end: 10
+semanticChange:
+  summary: Verify git diff boundaries before marking tasks complete
+  instruction: Verify that git diff contains only files related to the requested task.
+  rationale: Prevents unintended modification of unmanaged files.
+ruleMetadata:
+  strength: required
+  applicability: {}
+  override: explicit-task
+  enforcement: prompt
+  aliases: []
 evidence:
   type: cross-project-failure
   summary: Multiple repositories observed accidental modification of root build configs.
-  recordedFailures:
-    - Task agent modified root vitest.config.ts during domain-specific test fix.
-ruleMetadata:
-  strength: required
-  enforcement: prompt
-  override: explicit-task
-  instruction: Verify that git diff contains only files related to the requested task.
+  references:
+    - Observed accidental modification of root config in multiple frontend projects
+proposer:
+  repository: paynet/infokiosk/tms-frontend
+  context: Discovered during AGENTS.md classification audit
 ```
 
 ### Exporting the Proposal
